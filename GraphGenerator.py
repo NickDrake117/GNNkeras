@@ -35,7 +35,7 @@ class GraphDataGenerator(tf.keras.utils.Sequence):
         '''Generate one batch of data'''
         g = self.graph_tensors[index]
 
-        out = [g.nodes, g.arcs, g.set_mask, g.output_mask,
+        out = [g.nodes, g.arcs, g.set_mask[:, tf.newaxis], g.output_mask[:, tf.newaxis],
                (g.Adjacency.indices, g.Adjacency.values), (g.ArcNode.indices, g.ArcNode.values),
                g.NodeGraph]
 
