@@ -165,10 +165,8 @@ class LGNN(tf.keras.Model):
             # scatter_nd creates a zeros matrix 'node or arcs-compatible' with the elements of output located in mask==True
             out = tf.scatter_nd(tf.where(mask), output, shape=(len(mask), output.shape[1]))
 
-            if self.GNNS_CLASS == GNNedgeBased:
-                arcplus = tf.concat([arcplus, out], axis=1)
-            else:
-                nodeplus = tf.concat([nodeplus, out], axis=1)
+            if self.GNNS_CLASS == GNNedgeBased: arcplus = tf.concat([arcplus, out], axis=1)
+            else: nodeplus = tf.concat([nodeplus, out], axis=1)
 
         # update nodes and arcs labels
         nodes = tf.concat([nodes, nodeplus], axis=1)
@@ -251,6 +249,15 @@ class LGNN(tf.keras.Model):
     def fit(self, *input, **kwargs):
 
         if self.training_mode == 'serial':
+            ### in serial mode, :param callbacks: must be a list of list/tuple of callbacksOnject, s.t. len(callbacks) == self.LAYERS
+
+            # callbacks option
+            callbacks = [list() for _ in range(self.LAYERS)]
+            if 'callbacks' in kwargs:
+                assert all(isinstance(x, (list, tuple)) for x in kwargs['callbacks'])
+                assert len(kwargs['callbacks']) == self.LAYERS
+                callbacks = kwargs.pop('callbacks')
+
             # training data at t==0
             training_data_t0 = input[0]
             gTr_generator = training_data_t0.copy()
@@ -266,7 +273,8 @@ class LGNN(tf.keras.Model):
                 print(f'\n\n --- GNN {idx}/{self.LAYERS} ---')
 
                 ### TRAINING GNN single layer
-                gnn.fit(gTr_generator.copy(), *input[1:], validation_data=gVa_generator.copy() if gVa_generator else None, **kwargs)
+                gnn.fit(gTr_generator.copy(), *input[1:], **kwargs, callbacks=callbacks[idx],
+                        validation_data=gVa_generator.copy() if gVa_generator else None)
 
                 # get processing function to retrieve state and output for the nodes of the graphs processed by the gnn layer.
                 # It's fundamental for graph-based problem, since the output is referred to the entire graph, rather than to the graph nodes.

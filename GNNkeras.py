@@ -160,7 +160,8 @@ class GNNnodeBased(tf.keras.Model):
 
         # node_components refers to the considered nodes, NOT to the neighbors.
         # It is composed of [nodes' state] if state at t=0 is NOT initialized by labels, [nodes' state | nodes' labels] otherwise
-        node_components = [tf.constant(state)] + (nodes if self.state_vect_dim else [])
+        node_components = [tf.constant(state)]
+        if self.state_vect_dim > 0: node_components += [nodes]
 
         # aggregated_states is the aggregation of ONLY neighbors' states.
         # NOTE: if state_vect_dim != 0, neighbors' label are considered using :param aggregated_nodes: since it is constant
