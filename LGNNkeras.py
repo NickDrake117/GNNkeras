@@ -1,22 +1,33 @@
-from __future__ import annotations
+from typing import Union
 
+import tensorflow
 import tensorflow as tf
+
 from GNNkeras import GNNnodeBased, GNNedgeBased, GNNgraphBased
+
 
 #######################################################################################################################
 ### CLASS LGNN - GENERAL ##############################################################################################
 #######################################################################################################################
 class LGNN(tf.keras.Model):
+    """ LGNN for general purpose problem """
+
+    ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
-                 gnns,
+                 gnns: Union[list[GNNnodeBased], list[GNNedgeBased], list[GNNgraphBased]],
                  get_state: bool,
                  get_output: bool) -> None:
+        """ CONSTRUCTOR
 
+        :param gnns: list of GNN models belonging to only one of the following types: GNNnodeBased, GNNedgeBased or GNNgraphBased.
+        :param get_state: boolean. If True, nodes state is propagated along GNNs layers.
+        :param get_output:  boolean. If True, nodes/arcs output is propagated along GNNs layers.
+        """
         assert len(set([type(i) for i in gnns])) == 1
 
         super().__init__()
 
-        ### LGNNs parameter
+        ### LGNN parameter
         self.GNNS_CLASS = type(gnns[0])
 
         self.gnns = gnns
@@ -27,10 +38,13 @@ class LGNN(tf.keras.Model):
 
         # training mode, to be compiled: 'serial', 'parallel', 'residual'
         self.training_mode = None
+
+        # net_state weights policy: True or False.
+        # if True weights are averaged srt the number of iterations, otherwise they're summed
         self.average_st_grads = None
 
     # -----------------------------------------------------------------------------------------------------------------
-    def copy(self, copy_weights: bool = True) -> LGNN:
+    def copy(self, copy_weights: bool = True):
         """ COPY METHOD
 
         :param copy_weights: (bool) True: state and output weights of gnns are copied in new lgnn, otherwise they are re-initialized.
@@ -52,7 +66,7 @@ class LGNN(tf.keras.Model):
 
         # save configuration file in json format
         gnn_class = {GNNnodeBased: 'n', GNNedgeBased: 'a', GNNgraphBased: 'g'}[self.GNNS_CLASS]
-        config = {'get_state': self.get_state, 'get_output': self.get_output, 'gnns_class': gnn_class, 'training_mode': self.training_mode}
+        config = {'get_state': self.get_state, 'get_output': self.get_output, 'gnns_class': gnn_class}
 
         with open(f'{filepath}config.json', 'w') as json_file:
             dump(config, json_file)
@@ -60,7 +74,7 @@ class LGNN(tf.keras.Model):
     # -----------------------------------------------------------------------------------------------------------------
     @classmethod
     def load(self, path: str):
-        """ Load model from folder <path> """
+        """ Load model from folder <path>. The new model needs to be compiled to set training_mode and average_st_grads attributes """
         from json import loads
         from os import listdir
         from os.path import isdir
@@ -75,13 +89,41 @@ class LGNN(tf.keras.Model):
         # load GNNs
         gnn_class = {'n': GNNnodeBased, 'a': GNNedgeBased, 'g': GNNgraphBased}[config.pop('gnns_class')]
         gnns = [gnn_class.load(f'{path}{i}') for i in listdir(path) if isdir(f'{path}{i}')]
-        training_mode = config.pop('training_mode')
 
         return self(gnns=gnns, **config)
 
-        ## CALL METHOD ####################################################################################################
+    ## COMPILE METHOD #################################################################################################
+    def compile(self, *args, training_mode: str = 'parallel', average_st_grads: bool = False, **kwargs):
+        """ Configures the model for training.
 
+        :param args: args inherited from Model.compile method. See source for details.
+        :param training_mode: str in ['serial', 'parallel', 'residual'].
+                                > serial - each gnn in self.gnns is trained separately, one after another
+                                > parallel - gnns are trained all at once. Loss is processed as mean(loss(t, out_i) for i in self.gnns)
+                                > residual - gnns are trained all at once. Loss is processed as loss(t, mean(out_i for i in self.gnns))
+        :param average_st_grads: boolean. If True, net_state params are averaged wrt the number of iterations returned by Loop, summed otherwise.
+        :param kwargs: Arguments supported for backwards compatibility only. Inherited from Model.compile method. See source for details
+
+        :raise: ValueError – In case of invalid arguments for `optimizer`, `loss` or `metrics`.
+        """
+        super().compile(*args, **kwargs)
+        for gnn in self.gnns: gnn.compile(*args, average_st_grads=average_st_grads, **kwargs)
+
+        self.training_mode = training_mode
+        self.average_st_grads = average_st_grads
+
+    ## CALL METHODs ###################################################################################################
     def call(self, inputs, training: bool = False, mask=None):
+        inputs = self.process_inputs(inputs)
+        k, state, out = self.Loop(*inputs, training=training)
+        if training: return k, state, out
+        return out[-1]
+
+    # -----------------------------------------------------------------------------------------------------------------
+    @staticmethod
+    def process_inputs(inputs):
+        """ convert some inputs in SparseTensor (not handled by default) and squeeze masks for correct computation """
+
         # get a list from :param inputs: tuple, so as to set elements in list (since a tuple is not settable)
         inputs = list(inputs)
 
@@ -92,19 +134,15 @@ class LGNN(tf.keras.Model):
         inputs[4] = tf.SparseTensor(inputs[4][0], values=tf.squeeze(inputs[4][1]), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]])
         inputs[5] = tf.SparseTensor(inputs[5][0], values=tf.squeeze(inputs[5][1]), dense_shape=[inputs[0].shape[0], inputs[1].shape[0]])
 
-        # return self.Loop(*inputs, training=training)[-1]
-        k, state, out = self.Loop(*inputs, training=training)
-        if training:
-            return k, state, out
-        else:
-            return out[-1]
+        return inputs
 
     ## LOOP METHODS ###################################################################################################
-    def update_graph(self, nodes, arcs, set_mask, output_mask, state, output):
-        """
+    def update_graph(self, nodes, arcs, set_mask, output_mask, state, output) -> tuple:
+        """ update nodes and arcs tensor based on get_state and get_output attributes
+
         :param state: (tensor) output of the net_state model of a single gnn layer
         :param output: (tensor) output of the net_output model of a single gnn layer
-        :return: (GraphTensor) a new GraphTensor where actual state and/or output are integrated in nodes/arcs label
+        :return: (tuple of tensor) new nodes and arcs tensors in which actual state and/or output are integrated
         """
         # get tensorflow dtype
         dtype = tf.keras.backend.floatx()
@@ -132,6 +170,7 @@ class LGNN(tf.keras.Model):
             else:
                 nodeplus = tf.concat([nodeplus, out], axis=1)
 
+        # update nodes and arcs labels
         nodes = tf.concat([nodes, nodeplus], axis=1)
         arcs = tf.concat([arcs, arcplus], axis=1)
         return nodes, arcs
@@ -139,7 +178,7 @@ class LGNN(tf.keras.Model):
     # -----------------------------------------------------------------------------------------------------------------
     def Loop(self, nodes, arcs, set_mask, output_mask, transposed_adjacency, transposed_arcnode, nodegraph,
              training: bool = False) -> tuple[list[tf.Tensor], tf.Tensor, list[tf.Tensor]]:
-        """ Process a single GraphObject/GraphTensor element g, returning iteration, states and output """
+        """ Process a single GraphObject/GraphTensor element g, returning 3 lists of iteration(s), state(s) and output(s) """
 
         constant_inputs = [set_mask, output_mask, transposed_adjacency, transposed_arcnode, nodegraph]
 
@@ -148,45 +187,27 @@ class LGNN(tf.keras.Model):
         nodes_0, arcs_0 = tf.constant(nodes, dtype=dtype), tf.constant(arcs, dtype=dtype)
 
         # forward pass
-        K, outs = list(), list()
+        K, states, outs = list(), list(), list()
         for idx, gnn in enumerate(self.gnns[:-1]):
+            # process graph
+            processing_function = super(GNNgraphBased, gnn).Loop if isinstance(gnn, GNNgraphBased) else gnn.Loop
+            k, state, out = processing_function(nodes, arcs, *constant_inputs, training=training)
 
-            if isinstance(gnn, GNNgraphBased):
-                k, state, out = super(GNNgraphBased, gnn).Loop(nodes, arcs, *constant_inputs, training=training)
-                outs.append(tf.matmul(nodegraph, out, transpose_a=True))
-
-            else:
-                k, state, out = gnn.Loop(nodes, arcs, *constant_inputs, training=training)
-                outs.append(out)
-
+            # append new k, new states and new gnn output
             K.append(k)
+            states.append(state)
+            outs.append(tf.matmul(nodegraph, out, transpose_a=True) if isinstance(gnn, GNNgraphBased) else out)
 
-            # update graph with state and output of the current GNN layer, to feed next GNN layer
+            # update graph with nodes' state and  nodes/arcs' output of the current GNN layer, to feed next GNN layer
             nodes, arcs = self.update_graph(nodes_0, arcs_0, set_mask, output_mask, state, out)
 
         # final GNN k, state and out values
         k, state, out = self.gnns[-1].Loop(nodes, arcs, *constant_inputs, training=training)
-        return K + [k], state, outs + [out]
 
-    # -----------------------------------------------------------------------------------------------------------------
-    def compile(self, *args, training_mode ='parallel', average_st_grads=False, **kwargs):
-        super().compile(*args, **kwargs)
-        for gnn in self.gnns: gnn.compile(*args, average_st_grads=average_st_grads, **kwargs)
-
-        self.training_mode = training_mode
-        self.average_st_grads = average_st_grads
-
+        # return a list of Ks, states and gnn outputs, s.t. len == self.LAYERS
+        return K + [k], states + [state], outs + [out]
 
     ## FIT METHOD #####################################################################################################
-    def fit(self, *input, **kwargs):
-        #if self.training_mode is None: self.training_mode = 'parallel'
-
-        if self.training_mode == 'serial':
-            for idx, gnn in enumerate(self.gnns):
-                print(f'\n\n --- GNN{idx}/{self.LAYERS} ---')
-                gnn.fit(*input, **kwargs)
-        else: super().fit(*input, **kwargs)
-
     def train_step(self, data):
         # works only if data is provided by the custom GraphGenerator
         x, y, sample_weight = data
@@ -196,7 +217,8 @@ class LGNN(tf.keras.Model):
             k, state, y_pred = self(x, training=True)
             if self.training_mode == 'parallel':
                 loss = tf.reduce_mean([self.compiled_loss(y, yi, sample_weight, regularization_losses=self.losses) for yi in y_pred], axis=0)
-            else: loss = self.compiled_loss(y, tf.reduce_mean(y_pred, axis=0), sample_weight, regularization_losses=self.losses)
+            else:
+                loss = self.compiled_loss(y, tf.reduce_mean(y_pred, axis=0), sample_weight, regularization_losses=self.losses)
 
         if self.loss and y is None:
             raise TypeError('Target data is missing. Your model was compiled with `loss` '
@@ -225,3 +247,59 @@ class LGNN(tf.keras.Model):
                 return_metrics[metric.name] = result
         return return_metrics
 
+    # -----------------------------------------------------------------------------------------------------------------
+    def fit(self, *input, **kwargs):
+
+        if self.training_mode == 'serial':
+            # training data at t==0
+            training_data_t0 = input[0]
+            gTr_generator = training_data_t0.copy()
+
+            # validation data at t==0, if provided
+            validation_data, gVa_generator = None, None
+            if 'validation_data' in kwargs:
+                validation_data = kwargs.pop('validation_data')
+                gVa_generator = validation_data.copy()
+
+            ### LEARNING PROCEDURE - each gnn layer is trained separately, one after another
+            for idx, gnn in enumerate(self.gnns):
+                print(f'\n\n --- GNN {idx}/{self.LAYERS} ---')
+
+                ### TRAINING GNN single layer
+                gnn.fit(gTr_generator.copy(), *input[1:], validation_data=gVa_generator.copy() if gVa_generator else None, **kwargs)
+
+                # get processing function to retrieve state and output for the nodes of the graphs processed by the gnn layer.
+                # It's fundamental for graph-based problem, since the output is referred to the entire graph, rather than to the graph nodes.
+                processing_function = super(GNNgraphBased, gnn).Loop if isinstance(gnn, GNNgraphBased) else gnn.Loop
+
+                ### PROCESSING TRAINING DATA
+                # set batch size == 1 to retrieve single graph nodes, arcs, state and outputs, for graph update process between layers
+                gTr_generator.shuffle = False
+                gTr_generator.set_batch_size(1)
+
+                # retrieve iteration, state and output of nodes/arcs for each graph
+                _, sTr, oTr = zip(*[processing_function(*gnn.process_inputs(i[0]), training=True) for i in gTr_generator])
+
+                # update nodes and arcs attributes for each single graph.
+                # Note that graph.DIM_NODE_LABEL is not updated, as the new graph is computed and processed on the fly
+                gTr_generator = training_data_t0.copy()
+                for g, s, o in zip(gTr_generator.data, sTr, oTr):
+                    g.nodes, g.arcs = [i.numpy() for i in self.update_graph(g.nodes, g.arcs, g.set_mask, g.output_mask, s, o)]
+
+                ### PROCESSING VALIDATION DATA if provided, same as the training data
+                if validation_data:
+                    # set batch size == 1 to retrieve single graph nodes, arcs, state and outputs, for graph update process between layers
+                    gVa_generator.shuffle = False
+                    gVa_generator.set_batch_size(1)
+
+                    # retrieve iteration, state and output of nodes/arcs for each graph
+                    _, sVa, oVa = zip(*[processing_function(*gnn.process_inputs(i[0]), training=True) for i in gVa_generator])
+
+                    # update nodes and arcs attributes for each single graph.
+                    # Note that graph.DIM_NODE_LABEL is not updated, as the new graph is computed and processed on the fly
+                    gVa_generator = validation_data.copy()
+                    for g, s, o in zip(gVa_generator.data, sVa, oVa):
+                        g.nodes, g.arcs = [i.numpy() for i in self.update_graph(g.nodes, g.arcs, g.set_mask, g.output_mask, s, o)]
+
+        else:
+            super().fit(*input, **kwargs)

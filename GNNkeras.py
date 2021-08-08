@@ -1,4 +1,4 @@
-from __future__ import annotations
+#from __future__ import annotations
 
 import tensorflow as tf
 
@@ -7,6 +7,9 @@ import tensorflow as tf
 ### CLASS GNN - NODE BASED ############################################################################################
 #######################################################################################################################
 class GNNnodeBased(tf.keras.Model):
+    """ GNN for node-based problem """
+
+    ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
                  net_state: tf.keras.models.Sequential,
                  net_output: tf.keras.models.Sequential,
@@ -26,6 +29,8 @@ class GNNnodeBased(tf.keras.Model):
         assert state_threshold >= 0
 
         super().__init__()
+
+        # GNN parameters
         self.net_state = net_state
         self.net_output = net_output
         self.state_vect_dim = int(state_vect_dim)
@@ -34,7 +39,7 @@ class GNNnodeBased(tf.keras.Model):
         self.average_st_grads = None
 
     # -----------------------------------------------------------------------------------------------------------------
-    def copy(self, copy_weights: bool = True) -> GNNnodeBased:
+    def copy(self, copy_weights: bool = True):
         """ COPY METHOD
 
         :param copy_weights: (bool) True: state and output weights are copied in new gnn, otherwise they are re-initialized.
@@ -91,15 +96,31 @@ class GNNnodeBased(tf.keras.Model):
 
     ## COMPILE METHOD #################################################################################################
     def compile(self, *args, average_st_grads=False, **kwargs):
+        """ Configures the model for training.
+
+        :param args: args inherited from Model.compile method. See source for details.
+        :param average_st_grads: boolean. If True, net_state params are averaged wrt the number of iterations returned by Loop, summed otherwise.
+        :param kwargs: Arguments supported for backwards compatibility only. Inherited from Model.compile method. See source for details
+
+        :raise: ValueError – In case of invalid arguments for `optimizer`, `loss` or `metrics`.
+        """
         super().compile(*args, **kwargs)
         self.net_state.compile(*args, **kwargs)
         self.net_output.compile(*args, **kwargs)
-        # if average_st_grads == True, gradients for net_state are averaged w.r.t the number of iterations
         self.average_st_grads = average_st_grads
-
 
     ## CALL METHOD ####################################################################################################
     def call(self, inputs, training: bool = False, mask=None):
+        inputs = self.process_inputs(inputs)
+        k, state, out = self.Loop(*inputs, training=training)
+        if training: return k, state, out
+        else: return out
+
+    # -----------------------------------------------------------------------------------------------------------------
+    @staticmethod
+    def process_inputs(inputs):
+        """ convert some inputs in SparseTensor (not handled by default) and squeeze masks for correct computation """
+
         # get a list from :param inputs: tuple, so as to set elements in list (since a tuple is not settable)
         inputs = list(inputs)
 
@@ -110,15 +131,12 @@ class GNNnodeBased(tf.keras.Model):
         inputs[4] = tf.SparseTensor(inputs[4][0], values=tf.squeeze(inputs[4][1]), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]])
         inputs[5] = tf.SparseTensor(inputs[5][0], values=tf.squeeze(inputs[5][1]), dense_shape=[inputs[0].shape[0], inputs[1].shape[0]])
 
-        #return self.Loop(*inputs, training=training)[-1]
-        k, state, out = self.Loop(*inputs, training=training)
-        if training: return k, state, out
-        else: return out
-
+        return inputs
 
     ## LOOP METHODS ###################################################################################################
     def condition(self, k, state, state_old, *args) -> tf.bool:
         """ Boolean function condition for tf.while_loop correct processing graphs """
+
         # distance_vector is the Euclidean Distance: √ Σ(xi-yi)² between current state xi and past state yi
         outDistance = tf.sqrt(tf.reduce_sum(tf.square(tf.subtract(state, state_old)), axis=1))
 
@@ -139,6 +157,7 @@ class GNNnodeBased(tf.keras.Model):
     # -----------------------------------------------------------------------------------------------------------------
     def convergence(self, k, state, state_old, nodes, transposed_adjacency, aggregated_nodes, aggregated_arcs, training) -> tuple:
         """ Compute new state for the graph's nodes """
+
         # node_components refers to the considered nodes, NOT to the neighbors.
         # It is composed of [nodes' state] if state at t=0 is NOT initialized by labels, [nodes' state | nodes' labels] otherwise
         node_components = [tf.constant(state)] + (nodes if self.state_vect_dim else [])
@@ -159,7 +178,6 @@ class GNNnodeBased(tf.keras.Model):
     def apply_filters(self, state_converged, nodes, adjacency, arcs_label, mask) -> tf.Tensor:
         """ Takes only nodes' [states] or [states|labels] for those with output_mask==1 AND belonging to set """
         if self.state_vect_dim: state_converged = tf.concat([state_converged, nodes], axis=1)
-        # return tf.boolean_mask(state_converged, tf.squeeze(mask))
         return tf.boolean_mask(state_converged, mask)
 
     # -----------------------------------------------------------------------------------------------------------------
@@ -195,7 +213,7 @@ class GNNnodeBased(tf.keras.Model):
         out = self.net_output(input_to_net_output, training=training)
         return k, state, out
 
-
+    ## TRAIN METHODS ##################################################################################################
     def train_step(self, data):
         # works only if data is provided by the custom GraphGenerator
         x, y, sample_weight = data

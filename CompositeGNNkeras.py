@@ -1,11 +1,12 @@
-from __future__ import annotations
-
 import tensorflow as tf
 
 #######################################################################################################################
 ### CLASS COMPOSITE GNN - NODE BASED ##################################################################################
 #######################################################################################################################
 class CompositeGNNnodeBased(tf.keras.Model):
+    """ Composite GNN for node-based problem """
+
+    ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
                  net_state: list[tf.keras.models.Sequential],
                  net_output: tf.keras.models.Sequential,
@@ -25,14 +26,17 @@ class CompositeGNNnodeBased(tf.keras.Model):
         assert state_threshold >= 0
 
         super().__init__()
+
+        # GNN parameters
         self.net_state = net_state
         self.net_output = net_output
         self.state_vect_dim = int(state_vect_dim)
         self.max_iteration = int(max_iteration)
         self.state_threshold = state_threshold
+        self.average_st_grads = None
 
     # -----------------------------------------------------------------------------------------------------------------
-    def copy(self, copy_weights: bool = True) -> CompositeGNNnodeBased:
+    def copy(self, copy_weights: bool = True):
         """ COPY METHOD
 
         :param copy_weights: (bool) True: state and output weights are copied in new gnn, otherwise they are re-initialized.
@@ -90,13 +94,33 @@ class CompositeGNNnodeBased(tf.keras.Model):
         return self(net_state=netS, net_output=netO, **config)
 
     ## COMPILE METHOD #################################################################################################
-    def compile(self, *args, **kwargs):
+    def compile(self, *args, average_st_grads=False, **kwargs):
+        """ Configures the model for training.
+
+        :param args: args inherited from Model.compile method. See source for details.
+        :param average_st_grads: boolean. If True, net_state params are averaged wrt the number of iterations returned by Loop, summed otherwise.
+        :param kwargs: Arguments supported for backwards compatibility only. Inherited from Model.compile method. See source for details
+
+        :raise: ValueError – In case of invalid arguments for `optimizer`, `loss` or `metrics`.
+        """
         super().compile(*args, **kwargs)
         for net in self.net_state: net.compile(*args, **kwargs)
         self.net_output.compile(*args, **kwargs)
+        self.average_st_grads = average_st_grads
 
     ## CALL METHOD ####################################################################################################
     def call(self, inputs, training: bool = False, mask=None):
+        inputs = self.process_inputs(inputs)
+        k, state, out = self.Loop(*inputs, training=training)
+        if training: return k, state, out
+        else: return out
+        # return self.Loop(*inputs, training=training)[-1]
+
+    # -----------------------------------------------------------------------------------------------------------------
+    @staticmethod
+    def process_inputs(inputs):
+        """ convert some inputs in SparseTensor (not handled by default) and squeeze masks for correct computation """
+
         # get a list from :param inputs: tuple, so as to set elements in list (since a tuple is not settable)
         inputs = list(inputs)
 
@@ -108,11 +132,12 @@ class CompositeGNNnodeBased(tf.keras.Model):
         inputs[8] = tf.SparseTensor(inputs[8][0], values=tf.squeeze(inputs[8][1]), dense_shape=[inputs[0].shape[0], inputs[1].shape[0]])
         inputs[7] = [tf.SparseTensor(i, values=tf.squeeze(v, axis=-1), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]]) for i, v in inputs[7]]
 
-        return self.Loop(*inputs, training=training)[-1]
+        return inputs
 
     ## LOOP METHODS ###################################################################################################
     def condition(self, k, state, state_old, *args) -> tf.bool:
         """ Boolean function condition for tf.while_loop correct processing graphs """
+
         # distance_vector is the Euclidean Distance: √ Σ(xi-yi)² between current state xi and past state yi
         outDistance = tf.sqrt(tf.reduce_sum(tf.square(tf.subtract(state, state_old)), axis=1))
 
@@ -131,9 +156,9 @@ class CompositeGNNnodeBased(tf.keras.Model):
         return tf.logical_and(c1, c2)
 
     # -----------------------------------------------------------------------------------------------------------------
-    def convergence(self, k, state, state_old, nodes, dim_node_labels, type_mask, transposed_adjacency, aggregated_component,
-                    training) -> tuple:
+    def convergence(self, k, state, state_old, nodes, dim_node_labels, type_mask, transposed_adjacency, aggregated_component, training) -> tuple:
         """ Compute new state for the graph's nodes """
+
         # aggregated_states is the aggregation of ONLY neighbors' states.
         aggregated_states = tf.sparse.sparse_dense_matmul(transposed_adjacency, state)
 
@@ -173,13 +198,15 @@ class CompositeGNNnodeBased(tf.keras.Model):
 
         # new values for Loop
         k = tf.constant(0, dtype=dtype)
-        state = tf.random.normal((nodes.shape[0], self.state_vect_dim), stddev=0.1, dtype=dtype)
+        if self.state_vect_dim > 0: state = tf.random.normal((nodes.shape[0], self.state_vect_dim), stddev=0.1, dtype=dtype)
+        else: state = tf.constant(nodes, dtype=dtype)
         state_old = tf.ones_like(state, dtype=dtype)
         training = tf.constant(training, dtype=bool)
 
         # loop until convergence is reached
         k, state, state_old, *_ = tf.while_loop(self.condition, self.convergence,
-                                                [k, state, state_old, nodes, dim_node_labels, type_mask, transposed_adjacency, aggregated_component, training])
+                                                [k, state, state_old, nodes, dim_node_labels, type_mask,
+                                                 transposed_adjacency, aggregated_component, training])
 
         # out_st is the converged state for the filtered nodes, depending on g.set_mask
         mask = tf.logical_and(set_mask, output_mask)
@@ -189,12 +216,45 @@ class CompositeGNNnodeBased(tf.keras.Model):
         out = self.net_output(input_to_net_output, training=training)
         return k, state, out
 
+    ## TRAIN METHODS ##################################################################################################
+    def train_step(self, data):
+        # works only if data is provided by the custom GraphGenerator
+        x, y, sample_weight = data
+
+        # Run forward pass.
+        with tf.GradientTape() as tape:
+            k, state, y_pred = self(x, training=True)
+            loss = self.compiled_loss(y, y_pred, sample_weight, regularization_losses=self.losses)
+
+        if self.loss and y is None:
+            raise TypeError('Target data is missing. Your model was compiled with `loss` '
+                            'argument and so expects targets to be passed in `fit()`.')
+
+        # Run backwards pass.
+        #wS, wO = self.net_state.trainable_variables, self.net_output.trainable_variables
+        wS, wO = [j for i in self.net_state for j in i.trainable_variables], self.net_output.trainable_variables
+        dwbS, dwbO = tape.gradient(loss, [wS, wO])
+        if self.average_st_grads: dwbS = [i / k for i in dwbS]
+
+        # self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
+        self.optimizer.apply_gradients(zip(dwbS + dwbO, wS + wO))
+        self.compiled_metrics.update_state(y, y_pred, sample_weight)
+
+        # Collect metrics to return
+        return_metrics = {}
+        for metric in self.metrics:
+            result = metric.result()
+            if isinstance(result, dict):
+                return_metrics.update(result)
+            else:
+                return_metrics[metric.name] = result
+        return return_metrics
 
 #######################################################################################################################
 ### CLASS COMPOSITE GNN - EDGE BASED ##################################################################################
 #######################################################################################################################
 class CompositeGNNedgeBased(CompositeGNNnodeBased):
-    """ GNN for edge-based problem """
+    """ Composite GNN for edge-based problem """
 
     ## LOOP METHODS ###################################################################################################
     def apply_filters(self, state_converged, nodes, transposed_adjacency, arcs_label, mask) -> tf.Tensor:
@@ -217,12 +277,11 @@ class CompositeGNNedgeBased(CompositeGNNnodeBased):
 ### CLASS COMPOSITE GNN - GRAPH BASED #################################################################################
 #######################################################################################################################
 class CompositeGNNgraphBased(CompositeGNNnodeBased):
-    """ GNN for graph-based problem """
+    """ Composite GNN for graph-based problem """
 
     ## LOOP METHODS ###################################################################################################
-    def Loop(self, *args, nodegraph, training: bool = False) -> tuple[int, tf.Tensor, tf.Tensor]:
+    def Loop(self, *args, training: bool = False) -> tuple[int, tf.Tensor, tf.Tensor]:
         """ Process a single graph, returning iteration, states and output. Output of graph-based problem is the averaged nodes output """
-        k, state_nodes, out_nodes = super().Loop(*args, nodegraph, training=training)
-        out_gnn = tf.matmul(nodegraph, out_nodes, transpose_a=True)
+        k, state_nodes, out_nodes = super().Loop(*args, training=training)
+        out_gnn = tf.matmul(args[-1], out_nodes, transpose_a=True)
         return k, state_nodes, out_gnn
-

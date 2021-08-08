@@ -10,7 +10,7 @@ from GNN.graph_class import GraphObject, GraphTensor
 
 
 class GraphDataGenerator(tf.keras.utils.Sequence):
-
+    # -----------------------------------------------------------------------------------------------------------------
     def __init__(self,
                  graphs: Union[GraphObject, list[GraphObject]],
                  problem_based: str,
@@ -23,14 +23,21 @@ class GraphDataGenerator(tf.keras.utils.Sequence):
         self.aggregation_mode = aggregation_mode
         self.batch_size = batch_size
         self.shuffle = shuffle
-        self.length = int(np.ceil(len(self.data) / self.batch_size))
         self.dtype = tf.keras.backend.floatx()
         self.on_epoch_end()
 
+    # -----------------------------------------------------------------------------------------------------------------
+    def copy(self):
+        new_gen = self.__class__([i.copy() for i in self.data], self.problem_based, self.aggregation_mode, self.batch_size, False)
+        new_gen.shuffle = self.shuffle
+        return new_gen
+
+    # -----------------------------------------------------------------------------------------------------------------
     def __len__(self):
         '''Denotes the number of batches per epoch'''
-        return self.length
+        return int(np.ceil(len(self.data) / self.batch_size))
 
+    # -----------------------------------------------------------------------------------------------------------------
     def __getitem__(self, index):
         '''Generate one batch of data'''
         g = self.graph_tensors[index]
@@ -45,17 +52,23 @@ class GraphDataGenerator(tf.keras.utils.Sequence):
 
         return out, targets, sample_weights
 
+    # -----------------------------------------------------------------------------------------------------------------
+    def set_batch_size(self, new_batch_size):
+        self.batch_size = new_batch_size
+        self.on_epoch_end()
+
+    # -----------------------------------------------------------------------------------------------------------------
     def on_epoch_end(self):
         '''Updates indexes after each epoch'''
         if self.shuffle: np.random.shuffle(self.data)
         graphs = [GraphObject.merge(self.data[i * self.batch_size: (i + 1) * self.batch_size], problem_based=self.problem_based,
-                                    aggregation_mode=self.aggregation_mode) for i in range(self.length)]
+                                    aggregation_mode=self.aggregation_mode) for i in range(len(self))]
         self.graph_tensors = [GraphTensor.fromGraphObject(g) for g in graphs]
 
 
 ################################################################################################
 class CompositeGraphDataGenerator(GraphDataGenerator):
-
+    # -----------------------------------------------------------------------------------------------------------------
     def __getitem__(self, index):
         '''Generate one batch of data'''
         g = self.graph_tensors[index]
@@ -73,9 +86,10 @@ class CompositeGraphDataGenerator(GraphDataGenerator):
 
         return out, targets, sample_weights
 
+    # -----------------------------------------------------------------------------------------------------------------
     def on_epoch_end(self):
         '''Updates indexes after each epoch'''
         if self.shuffle: np.random.shuffle(self.data)
         graphs = [CompositeGraphObject.merge(self.data[i * self.batch_size: (i + 1) * self.batch_size], problem_based=self.problem_based,
-                                             aggregation_mode=self.aggregation_mode) for i in range(self.length)]
+                                             aggregation_mode=self.aggregation_mode) for i in range(len(self))]
         self.graph_tensors = [CompositeGraphTensor.fromGraphObject(g) for g in graphs]
