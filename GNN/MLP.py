@@ -53,7 +53,6 @@ def MLP(input_dim: int, layers: list[int], activations, kernel_initializer, bias
     # Dropout layers
     if dropout_rate and dropout_pos:
         dropout = AlphaDropout if alphadropout else Dropout
-        #dropout_pos = list(array(dropout_pos) + arange(len(dropout_pos)))
         dropout_pos = array(dropout_pos, dtype=int) + arange(len(dropout_pos))
         for i, (rate, pos) in enumerate(zip(dropout_rate, dropout_pos)):
             keras_layers.insert(pos, dropout)
@@ -64,13 +63,11 @@ def MLP(input_dim: int, layers: list[int], activations, kernel_initializer, bias
         batch_normalization_name = f'{name}_batch_normalization' if name is not None else None
         params_layers.insert(0, {'name': batch_normalization_name})
         keras_layers.insert(0, BatchNormalization)
-        #mlp_layers += [BatchNormalization(input_shape=(input_dim,), name = batch_normalization_name)]
 
     # set input shape for first layer
     params_layers[0]['input_shape'] = input_dim
 
     # return MLP model
-    #mlp_layers += [Dense(**i) if 'units' in i else dropout(**i) for i in params]
     mlp_layers = [layer(**params) for layer, params in zip(keras_layers, params_layers)]
 
     return Sequential(mlp_layers, name=name)
@@ -79,7 +76,7 @@ def MLP(input_dim: int, layers: list[int], activations, kernel_initializer, bias
 # ---------------------------------------------------------------------------------------------------------------------
 def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_target: int, problem_based: str, dim_state: int,
                    hidden_units: Union[None, int, list[int]],
-                   *, layer: int = 0, get_state: bool = False, get_output: bool = False) -> tuple[int, list[int]]:
+                   *, layer: int = 0, get_state: bool = False, get_output: bool = False) -> tuple[list[tuple], list[int]]:
     """ Calculate input and output dimension for the MLP of state and output
 
     :param net_name: (str) in ['state','output']
@@ -120,6 +117,7 @@ def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_t
 
     # MLP output
     elif net_name == 'output':
+        if len(NL)>1: NL = array([0]) ### è QUI IL PROBLEMA, un NL di sotto rimane != da 0
         input_shape =  list((problem_based == 'a') * (NL + AL + DS) + NL + DS)
         output_shape = T
 
@@ -127,9 +125,8 @@ def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_t
     else: raise ValueError(':param net_name: not in [\'state\', \'output\']')
 
     # input shape: generale case
-    # if the problem is NON-composite, it is a single tuple of len==1, a list of tuples of len==1 each otherwise
+    # if the problem is NON-composite, it is a list with a single tuple of len==1, a list of tuples of len==1 each otherwise
     input_shape = [(i,) for i in input_shape]
-    if len(input_shape) == 1: input_shape = input_shape[0]
 
     # hidden part
     if not hidden_units: hidden_units = list()

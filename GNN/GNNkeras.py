@@ -94,6 +94,12 @@ class GNNnodeBased(tf.keras.Model):
 
         return self(net_state=netS, net_output=netO, **config)
 
+    ## SUMMARY METHOD #################################################################################################
+    def summary(self):
+        self.net_state.summary()
+        print('\n\n')
+        self.net_output.summary()
+
     ## COMPILE METHOD #################################################################################################
     def compile(self, *args, average_st_grads=False, **kwargs):
         """ Configures the model for training.

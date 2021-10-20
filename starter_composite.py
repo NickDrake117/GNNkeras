@@ -6,11 +6,11 @@ import tensorflow as tf
 from numpy import random
 
 from GNN import GNN_utils as utils
-from GNN.GNNkeras import GNNgraphBased
-from GNN.GraphGenerator import GraphDataGenerator
-from GNN.LGNNkeras import LGNN
+from GNN.CompositeGNNkeras import CompositeGNNgraphBased
+from GNN.CompositeLGNNkeras import CompositeLGNN
+from GNN.GraphGenerator import CompositeGraphDataGenerator
 from GNN.MLP import MLP, get_inout_dims
-from GNN.graph_class import GraphObject
+from GNN.composite_graph_class import CompositeGraphObject
 
 #######################################################################################################################
 # SCRIPT OPTIONS - modify the parameters to adapt the execution to the problem under consideration ####################
@@ -38,20 +38,22 @@ kernel_reg_net_state    : str = None
 bias_reg_net_state      : str = None
 dropout_rate_st         : float = 0.1
 dropout_pos_st          : Union[list[int], int] = 0
+batch_normalization_st  : bool = False
 hidden_units_net_state  : Optional[Union[list[int], int]] = None
 
 ### NET OUTPUT PARAMETERS
-activations_net_output  : str = 'softmax'
+activations_net_output  : str = 'sigmoid'
 kernel_init_net_output  : str = 'glorot_normal'
 bias_init_net_output    : str = 'glorot_normal'
 kernel_reg_net_output   : str = None
 bias_reg_net_output     : str = None
 dropout_rate_out        : float = 0.1
 dropout_pos_out         : Union[list[int], int] = 0
+batch_normalization_out : bool = False
 hidden_units_net_output : Optional[Union[list[int], int]] = None
 
 # GNN PARAMETERS
-dim_state       : int = 10
+dim_state       : int = 4
 max_iter        : int = 5
 state_threshold : float = 0.01
 
@@ -62,7 +64,7 @@ get_output      : bool = True
 training_mode   : str = 'parallel'
 
 # LOSS / OPTIMIZER PARAMETERS
-loss_function   : tf.keras.losses = tf.keras.losses.categorical_crossentropy
+loss_function   : tf.keras.losses = tf.keras.losses.binary_crossentropy
 optimizer       : tf.keras.optimizers = tf.optimizers.Adam(learning_rate=0.01)
 
 # TRAINING PARAMETERS
@@ -81,8 +83,8 @@ epochs      : int = 10
 # from MUTAG
 addressed_problem = 'c'
 problem_based = 'g'
-from load_MUTAG import composite_graphs as graphs
-
+#from load_MUTAG import composite_graphs as graphs
+graphs = [CompositeGraphObject.load(f'EsempiGrafiEterogenei/{i}', problem_based, aggregation_mode) for i in os.listdir('EsempiGrafiEterogenei')]
 
 ### PREPROCESSING
 # SPLITTING DATASET in Train, Validation and Test set
@@ -114,6 +116,7 @@ nets_St = [[MLP(input_dim=s, layers=j,
                 bias_regularizer=bias_reg_net_state,
                 dropout_rate=dropout_rate_st,
                 dropout_pos=dropout_pos_st,
+                batch_normalization = batch_normalization_st,
                 name=f'State_{idx}') for s in i] for idx, (i, j) in enumerate(zip(input_net_st, layers_net_st))]
 
 # NETS - OUTPUT
@@ -122,7 +125,7 @@ input_net_out, layers_net_out = zip(*[get_inout_dims(net_name='output', dim_node
                                                      problem_based=problem_based, dim_state=dim_state,
                                                      hidden_units=hidden_units_net_output,
                                                      layer=i, get_state=get_state, get_output=get_output) for i in range(layers)])
-nets_Out = [MLP(input_dim=i, layers=j,
+nets_Out = [MLP(input_dim=k, layers=j,
                 activations=activations_net_output,
                 kernel_initializer=kernel_init_net_output,
                 bias_initializer=bias_init_net_output,
@@ -130,22 +133,23 @@ nets_Out = [MLP(input_dim=i, layers=j,
                 bias_regularizer=bias_reg_net_output,
                 dropout_rate=dropout_rate_out,
                 dropout_pos=dropout_pos_out,
-                name=f'Out_{idx}') for idx, (i, j) in enumerate(zip(input_net_out, layers_net_out))]
+                batch_normalization = batch_normalization_out,
+                name=f'Out_{idx}') for idx, (i, j) in enumerate(zip(input_net_out, layers_net_out)) for k in i]
 
 # GNN
-gnn = GNNgraphBased(nets_St[0], nets_Out[0], dim_state, max_iter, state_threshold).copy()
+gnn = CompositeGNNgraphBased(nets_St[0], nets_Out[0], dim_state, max_iter, state_threshold).copy()
 gnn.compile(optimizer=optimizer, loss=loss_function, average_st_grads=False, metrics=['accuracy', 'mse'], run_eagerly=True)
 
 # LGNN
-lgnn = LGNN([GNNgraphBased(s, o, dim_state, max_iter, state_threshold) for s, o in zip(nets_St, nets_Out)], get_state, get_output)
+lgnn = CompositeLGNN([CompositeGNNgraphBased(s, o, dim_state, max_iter, state_threshold) for s, o in zip(nets_St, nets_Out)], get_state, get_output)
 lgnn.compile(optimizer=optimizer, loss=loss_function, average_st_grads=True, metrics=['accuracy', 'mse'], run_eagerly=True,
              training_mode=training_mode)
 
 ### DATA PROCESSING
 # data generator
-gTr_Generator = GraphDataGenerator(gTr, problem_based, aggregation_mode)
-gVa_Generator = GraphDataGenerator(gVa, problem_based, aggregation_mode)
-gTe_Generator = GraphDataGenerator(gTe, problem_based, aggregation_mode)
+gTr_Generator = CompositeGraphDataGenerator(gTr, problem_based, aggregation_mode)
+gVa_Generator = CompositeGraphDataGenerator(gVa, problem_based, aggregation_mode)
+gTe_Generator = CompositeGraphDataGenerator(gTe, problem_based, aggregation_mode)
 
 ### TRAINING PROCEDURE
 if os.path.exists(path_writer): shutil.rmtree(path_writer)
@@ -160,6 +164,7 @@ tensorboard_lgnn = [tf.keras.callbacks.TensorBoard(log_dir=f'{path_writer}gnn{i}
 early_stopping_lgnn = [tf.keras.callbacks.EarlyStopping(monitor=monitored, restore_best_weights=True, patience=patience) for i in range(lgnn.LAYERS)]
 callbacks_lgnn = list(zip(tensorboard_lgnn, early_stopping_lgnn))
 if training_mode != 'serial': callbacks_lgnn = callbacks_lgnn[0]
+
 
 # gnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator, callbacks=callbacks_gnn)
 # lgnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator, callbacks=callbacks_lgnn)

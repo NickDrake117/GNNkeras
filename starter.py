@@ -18,7 +18,7 @@ from GNN.graph_class import GraphObject
 
 # MUTAG option - if True, gnn/lgnn is trained on a real-world dataset MUTAG
 # problem is set automatically to graph classification -> addressed_problem='c', problem_based='g'
-use_MUTAG: bool = False
+use_MUTAG: bool = True
 
 # GENERIC GRAPH PARAMETERS. See utils.randomGraph for details
 # Node and edge labels are initialized randomly. Target clusters are given by sklearn.
@@ -134,7 +134,7 @@ input_net_st, layers_net_st = zip(*[get_inout_dims(net_name='state', dim_node_la
                                                    problem_based=problem_based, dim_state=dim_state,
                                                    hidden_units=hidden_units_net_state,
                                                    layer=i, get_state=get_state, get_output=get_output) for i in range(layers)])
-nets_St = [MLP(input_dim=i, layers=j,
+nets_St = [MLP(input_dim=k, layers=j,
                activations=activations_net_state,
                kernel_initializer=kernel_init_net_state,
                bias_initializer=bias_init_net_state,
@@ -142,7 +142,7 @@ nets_St = [MLP(input_dim=i, layers=j,
                bias_regularizer=bias_reg_net_state,
                dropout_rate=dropout_rate_st,
                dropout_pos=dropout_pos_st,
-               name=f'State_{idx}') for idx, (i, j) in enumerate(zip(input_net_st, layers_net_st))]
+               name=f'State_{idx}') for idx, (i, j) in enumerate(zip(input_net_st, layers_net_st)) for k in i]
 
 # MLP NETS - OUTPUT
 input_net_out, layers_net_out = zip(*[get_inout_dims(net_name='output', dim_node_label=gGen.DIM_NODE_LABEL,
@@ -150,7 +150,7 @@ input_net_out, layers_net_out = zip(*[get_inout_dims(net_name='output', dim_node
                                                      problem_based=problem_based, dim_state=dim_state,
                                                      hidden_units=hidden_units_net_output,
                                                      layer=i, get_state=get_state, get_output=get_output) for i in range(layers)])
-nets_Out = [MLP(input_dim=i, layers=j,
+nets_Out = [MLP(input_dim=k, layers=j,
                 activations=activations_net_output,
                 kernel_initializer=kernel_init_net_output,
                 bias_initializer=bias_init_net_output,
@@ -158,7 +158,7 @@ nets_Out = [MLP(input_dim=i, layers=j,
                 bias_regularizer=bias_reg_net_output,
                 dropout_rate=dropout_rate_out,
                 dropout_pos=dropout_pos_out,
-                name=f'Out_{idx}') for idx, (i, j) in enumerate(zip(input_net_out, layers_net_out))]
+                name=f'Out_{idx}') for idx, (i, j) in enumerate(zip(input_net_out, layers_net_out)) for k in i]
 
 # template model
 model = {'n': GNNnodeBased, 'a': GNNedgeBased, 'g': GNNgraphBased}[problem_based]
@@ -192,5 +192,5 @@ early_stopping_lgnn = [tf.keras.callbacks.EarlyStopping(monitor=monitored, resto
 callbacks_lgnn = list(zip(tensorboard_lgnn, early_stopping_lgnn))
 if training_mode != 'serial': callbacks_lgnn = callbacks_lgnn[0]
 
-# gnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator, callbacks=callbacks_gnn)
+#gnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator, callbacks=callbacks_gnn)
 # lgnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator, callbacks=callbacks_lgnn)
