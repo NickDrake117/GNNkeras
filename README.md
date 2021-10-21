@@ -124,7 +124,7 @@ To perform models training and testing, run:
 
 ***NOTE** uncomment lgnn lines to train and test lgnn model in parallel mode. Set 'training_mode' argument to change learning behaviour*
 
-## Citing
+# Citing
 ### Implementation
 To cite the GNN/LGNN implementations please use the following publication:
 
