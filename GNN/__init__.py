@@ -1,1 +1,1 @@
-name = "gnn"
+name = "GNN"
