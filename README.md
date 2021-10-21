@@ -1,14 +1,18 @@
-# GNN & LGNN - (Layered) Graph Neural Network Keras Models
-This repo contains Tensorflow 2.x keras-based implementations of the Graph Neural Network (GNN) and Layered Graph Neural Network (LGNN) Models both for homogeneous and heterogeneous data.
+# GNN & LGNN - Graph Neural Network Keras Models
+This repo contains Tensorflow 2.x keras-based implementations of the following models: 
+- **GNN:** Graph Neural Network for homogeneous graphs;
+- **LGNN:** Layered Graph Neural Network for homogeneous graphs;
+- **CGNN:** Composite Graph Neural Network for heterogeneous graphs;
+- **CLGNN:** Composite Layered Graph Neural Network for heterogeneous graphs;
 
 **Authors**
-- **GNN:** [Niccolò Pancino](http://sailab.diism.unisi.it/people/niccolo-pancino/), [Pietro Bongini](http://sailab.diism.unisi.it/people/pietro-bongini/)
-- **LGNN:** Niccolò Pancino
+- **GNN/CGNN:** [Niccolò Pancino](http://sailab.diism.unisi.it/people/niccolo-pancino/), [Pietro Bongini](http://sailab.diism.unisi.it/people/pietro-bongini/)
+- **LGNN/CLGNN:** Niccolò Pancino
 
 
 ## Install
 ### Requirements
-The GNN framework requires the packages **tensorflow**, **numpy**, **pandas**, **scikit-learn**, **matplotlib**.
+The GNN framework requires the packages **tensorflow** and **numpy**.
 
 To install the requirements you can use the following command:
 
@@ -35,7 +39,7 @@ The models require the input data to be a tf.keras.utils.Sequence, as specified 
 
 
 
-### Single model training and testing
+### Homogeneous case: single model training and testing
 LGNN can be trained in parallel, serial or residual mode. 
 
 - *Serial Mode*: GNNs layers are trained separately, one by one; Each GNN layer is trained as a standalone GNN model, therefore becoming an *expert* which solves the considered problem using the original data and the experience obtained from the previous GNN layer, so as to "correct" the errors made by the previous network, rather than solving the whole problem.
@@ -75,6 +79,37 @@ To perform models training and testing, run:
 
 ***NOTE** uncomment lgnn lines to train and test lgnn model in parallel mode. Set 'training_mode' argument to change learning behaviour*
     
+
+### Heterogeneous case: single model training and testing
+Composite LGNN can be trained in parallel, serial or residual mode, as specified in the Homogeneous case. See above for details. 
+
+
+To perform models training and testing, run:
+    
+    # note that gnn and lgnn are already compiled in starter.py. In particular, lgnn is compiled to learn in 'parallel mode'
+    from starter_composite import gnn, lgnn, gTr_Generator, gTe_Generator, gVa_Generator
+    
+    epochs = 200
+    
+    # CGNN learning procedure
+    gnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator)
+    
+    # CGNN evaluation procedure
+    res = gnn.evaluate(gTe_Generator, return_dict=True)
+    
+
+    # CLGNN learning procedure in parallel mode
+    # lgnnfit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator)
+    
+    # LGNN evaluation procedure
+    # res = lgnn.evaluate(gTe_Generator, return_dict=True)
+    
+
+    # print evaluation result
+    for i in res:  
+        print(f'{i}: \t{res[i]:.4g}')
+
+***NOTE** uncomment lgnn lines to train and test lgnn model in parallel mode. Set 'training_mode' argument to change learning behaviour*
 
 ## Citing
 ### Implementation
