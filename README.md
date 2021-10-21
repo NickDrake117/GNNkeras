@@ -23,8 +23,8 @@ Download this folder and open a terminal in its location, then use the following
     
     python setup.py install
 
-
-# Homogeneous Setting
+---------
+## Homogeneous Setting
 In the following scripts, gnn is a GNN trained by default to solve a binary node-focused classification task on graphs with random nodes/edges/targets, while lgnn is a 5-layered GNN.
 
 Open the script `starter.py` and set parameters in section *SCRIPT OPTIONS* to change dataset and/or GNN/LGNN models architectures and learning behaviour.
@@ -78,8 +78,8 @@ To perform models training and testing, run:
 
 ***NOTE** uncomment lgnn lines to train and test lgnn model in parallel mode. Set 'training_mode' argument to change learning behaviour*
     
-    
-# Heterogeneous Setting
+---------
+## Heterogeneous Setting
 In the following scripts, gnn is a GNN trained by default to solve a binary node-focused classification task on graphs with random nodes/edges/targets, while lgnn is a 5-layered GNN.
 
 Open the script `starter_composite.py` and set parameters in section *SCRIPT OPTIONS* to change dataset and/or GNN/LGNN models architectures and learning behaviour.
@@ -124,7 +124,7 @@ To perform models training and testing, run:
 
 ***NOTE** uncomment lgnn lines to train and test lgnn model in parallel mode. Set 'training_mode' argument to change learning behaviour*
 
-# Citing
+## Citing
 ### Implementation
 To cite the GNN/LGNN implementations please use the following publication:
 
