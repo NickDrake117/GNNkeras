@@ -50,7 +50,7 @@ Training mode can be set when calling `LGNN.compile()` method. Default value is 
 
 To perform models training and testing, run:
     
-    # note that gnn and lgnn are already compiled in starter.py
+    # note that gnn and lgnn are already compiled in starter.py. In particular, lgnn is compiled to learn in 'parallel mode'
     from starter import gnn, lgnn, gTr_Generator, gTe_Generator, gVa_Generator
     
     epochs = 200
@@ -58,14 +58,14 @@ To perform models training and testing, run:
     # GNN learning procedure
     gnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator)
     
-    # GNN evaluaion procedure
+    # GNN evaluation procedure
     res = gnn.evaluate(gTe_Generator, return_dict=True)
     
 
-    # LGNN training in parallel mode
+    # LGNN learning procedure in parallel mode
     # lgnnfit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator)
     
-    # LGNN test
+    # LGNN evaluation procedure
     # res = lgnn.evaluate(gTe_Generator, return_dict=True)
     
 
