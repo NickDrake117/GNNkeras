@@ -6,8 +6,8 @@ import tensorflow as tf
 from numpy import random
 
 from GNN import GNN_utils as utils
-from GNN.CompositeGNNkeras import CompositeGNNgraphBased
-from GNN.CompositeLGNNkeras import CompositeLGNN
+from GNN.CompositeGNN import CompositeGNNgraphBased
+from GNN.CompositeLGNN import CompositeLGNN
 from GNN.GraphGenerator import CompositeGraphDataGenerator
 from GNN.MLP import MLP, get_inout_dims
 from GNN.composite_graph_class import CompositeGraphObject
@@ -58,7 +58,7 @@ max_iter        : int = 5
 state_threshold : float = 0.01
 
 # LGNN PARAMETERS
-layers          : int = 3
+layers          : int = 5
 get_state       : bool = False
 get_output      : bool = True
 training_mode   : str = 'parallel'

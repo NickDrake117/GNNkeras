@@ -6,9 +6,9 @@ import tensorflow as tf
 from numpy import random
 
 from GNN import GNN_utils as utils
-from GNN.GNNkeras import GNNnodeBased, GNNedgeBased, GNNgraphBased
+from GNN.GNN import GNNnodeBased, GNNedgeBased, GNNgraphBased
 from GNN.GraphGenerator import GraphDataGenerator
-from GNN.LGNNkeras import LGNN
+from GNN.LGNN import LGNN
 from GNN.MLP import MLP, get_inout_dims
 from GNN.graph_class import GraphObject
 
@@ -72,7 +72,7 @@ max_iter        : int = 5
 state_threshold : float = 0.01
 
 # LGNN PARAMETERS
-layers          : int = 3
+layers          : int = 5
 get_state       : bool = False
 get_output      : bool = True
 training_mode   : str = 'parallel'
