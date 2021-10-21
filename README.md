@@ -135,7 +135,3 @@ Bibtex:
       pages={1-8},
       doi={10.1109/IJCNN.2010.5596634}
     }
-    
-
-## Contributions
-Part of the code was inspired by [M. Tiezzi](http://sailab.diism.unisi.it/people/matteo-tiezzi/) and [A. Rossi](http://sailab.diism.unisi.it/people/alberto-rossi/) GNN implementation in TF 1.x ([repo](https://github.com/sailab-code/gnn)).
