@@ -50,9 +50,9 @@ class CompositeGraphObject:
         self.targets = targets.astype(self.dtype)
         self.sample_weights = sample_weights * np.ones(self.targets.shape[0])
 
-        # store dimensions
+        # store dimensions: first two columns of arcs contain nodes indices
         self.DIM_NODE_LABEL = np.array(dim_node_labels, ndmin=1, dtype=int)
-        self.DIM_ARC_LABEL = (arcs.shape[1] - 2)  # first two columns contain nodes indices
+        self.DIM_ARC_LABEL = arcs.shape[1] - 2
         self.DIM_TARGET = targets.shape[1]
 
         # type_mask[:,i] refers to nodes with DIM_NODE_LABEL[i] label dimension. Be careful when initializing a new graph
@@ -95,7 +95,8 @@ class CompositeGraphObject:
         """
         return CompositeGraphObject(arcs=self.getArcs(), nodes=self.getNodes(), targets=self.getTargets(), type_mask=self.getTypeMask(),
                                     dim_node_labels=self.DIM_NODE_LABEL, set_mask=self.getSetMask(), output_mask=self.getOutputMask(),
-                                    sample_weights=self.sample_weights, NodeGraph=self.getNodeGraph(), aggregation_mode=self.aggregation_mode)
+                                    sample_weights=self.sample_weights, NodeGraph=self.getNodeGraph(),
+                                    aggregation_mode=self.aggregation_mode)
 
     # -----------------------------------------------------------------------------------------------------------------
     def buildAdjacency(self):
@@ -104,7 +105,6 @@ class CompositeGraphObject:
         values = self.getArcNode().data
         indices = self.arcs[:, :2].astype(int)
         return coo_matrix((values, (indices[:, 0], indices[:, 1])), shape=(self.nodes.shape[0], self.nodes.shape[0]), dtype=self.dtype)
-
 
     def buildCompositeAdjacency(self):
         """ Build a list ADJ of Composite Aggregated Adjacency Matrices, s.t. ADJ[t][i,j]=value if an edge (i,j) exists AND type(i)==k
@@ -118,7 +118,6 @@ class CompositeGraphObject:
             a.eliminate_zeros()
 
         return typed_Adjacencies
-
 
     # -----------------------------------------------------------------------------------------------------------------
     def buildArcNode(self):
@@ -165,6 +164,7 @@ class CompositeGraphObject:
         self.aggregation_mode = aggregation_mode
         self.ArcNode = self.buildArcNode()
         self.Adjacency = self.buildAdjacency()
+        self.CompositeAdjacencies = self.buildCompositeAdjacency()
 
     # -----------------------------------------------------------------------------------------------------------------
     def buildNodeGraph(self, problem_based: str):
@@ -181,7 +181,18 @@ class CompositeGraphObject:
             nodegraph = np.ones((nodes_output_coefficient, 1), dtype=np.float32) * 1 / nodes_output_coefficient
         return nodegraph
 
+    ## REPRESENTATION METHODs #########################################################################################
+    def __repr__(self):
+        set_mask_type = 'all' if np.all(self.set_mask) else 'mixed'
+        return f"composite_graph(n={self.nodes.shape[0]}, a={self.arcs.shape[0]}, type={self.type_mask.shape[-1]}, " \
+               f"ndim={self.DIM_NODE_LABEL.tolist()}, adim={self.DIM_ARC_LABEL}, tdim={self.DIM_TARGET}, " \
+               f"set='{set_mask_type}', mode='{self.aggregation_mode}')"
+
     # -----------------------------------------------------------------------------------------------------------------
+    def __str__(self):
+        return self.__repr__()
+
+    ## SAVER METHODs ##################################################################################################
     def save(self, graph_folder_path: str) -> None:
         """ save graph in folder. All attributes are saved in numpy .npy files.
 
@@ -378,9 +389,15 @@ class CompositeGraphObject:
 
 
 class CompositeGraphTensor:
-    def __init__(self, nodes, arcs, targets, type_mask, dim_node_labels, set_mask, output_mask, sample_weights, Adjacency, CompositeAdjacencies,
-                 ArcNode, NodeGraph, aggregation_mode):
+    def __init__(self, nodes, arcs, targets, type_mask, dim_node_labels, set_mask, output_mask, sample_weights, Adjacency,
+                 CompositeAdjacencies, ArcNode, NodeGraph, aggregation_mode):
         dtype = tf.keras.backend.floatx()
+
+        # store dimensions: first two columns of arcs contain nodes indices
+        self.DIM_NODE_LABEL = nodes.shape[1]
+        self.DIM_ARC_LABEL = arcs.shape[1] - 2
+        self.DIM_TARGET = targets.shape[1]
+
         self.nodes = tf.constant(nodes, dtype=dtype)
         self.arcs = tf.constant(arcs, dtype=dtype)
         self.targets = tf.constant(targets, dtype=dtype)
@@ -390,8 +407,10 @@ class CompositeGraphTensor:
         self.output_mask = tf.constant(output_mask, dtype=bool)
         self.DIM_NODE_LABELS = tf.constant(dim_node_labels)
         self.aggregation_mode = aggregation_mode
+
         self.NodeGraph = None
         if NodeGraph is not None: self.NodeGraph = tf.constant(NodeGraph, dtype=dtype)
+
         # Adjacency and ArcNode in GraphTensor MUST BE already transposed!
         self.Adjacency = tf.sparse.SparseTensor.from_value(Adjacency)
         self.CompositeAdjacencies = [tf.sparse.SparseTensor.from_value(i) for i in CompositeAdjacencies]
@@ -400,18 +419,33 @@ class CompositeGraphTensor:
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
         return CompositeGraphTensor(nodes=self.nodes, arcs=self.arcs, targets=self.targets, type_mask=self.type_mask,
-                                    dim_node_labels=self.DIM_NODE_LABELS, set_mask=self.set_mask, output_mask=self.output_mask,
-                                    sample_weights=self.sample_weights, Adjacency=self.Adjacency, CompositeAdjacencies=self.CompositeAdjacencies,
-                                    ArcNode=self.ArcNode, NodeGraph=self.NodeGraph, aggregation_mode=self.aggregation_mode)
+                                    dim_node_labels=self.DIM_NODE_LABELS, set_mask=self.set_mask,
+                                    output_mask=self.output_mask, sample_weights=self.sample_weights,
+                                    Adjacency=self.Adjacency, CompositeAdjacencies=self.CompositeAdjacencies,
+                                    ArcNode=self.ArcNode, NodeGraph=self.NodeGraph,
+                                    aggregation_mode=self.aggregation_mode)
+
+    ## REPRESENTATION METHODs #########################################################################################
+    def __repr__(self):
+        set_mask_type = 'all' if tf.reduce_all(self.set_mask) else 'mixed'
+        return f"composite_graph_tensor(n={self.nodes.shape[0]}, a={self.arcs.shape[0]}, " \
+               f"type={len(self.DIM_NODE_LABEL)}, " \
+               f"ndim={self.DIM_NODE_LABEL}, adim={self.DIM_ARC_LABEL}, tdim={self.DIM_TARGET}, " \
+               f"set='{set_mask_type}', mode='{self.aggregation_mode})"
 
     # -----------------------------------------------------------------------------------------------------------------
+    def __str__(self):
+        return self.__repr__()
+
+    ## CLASS and STATHIC METHODs ######################################################################################
     @classmethod
     def fromGraphObject(self, g: CompositeGraphObject):
         """ Create GraphTensor from GraphObject. Note that Adjacency and ArcNode are transposed so that GraphTensor.ArcNode and
         GraphTensor.Adjacency are ready for sparse_dense_matmul in Loop operations.
         """
-        return self(nodes=g.nodes, arcs=g.arcs, targets=g.targets, type_mask=g.type_mask.transpose(), dim_node_labels=g.DIM_NODE_LABEL,
-                    set_mask=g.set_mask, output_mask=g.output_mask, sample_weights=g.sample_weights, NodeGraph=g.NodeGraph,
+        return self(nodes=g.nodes, arcs=g.arcs, targets=g.targets, type_mask=g.type_mask.transpose(),
+                    dim_node_labels=g.DIM_NODE_LABEL, set_mask=g.set_mask, output_mask=g.output_mask,
+                    sample_weights=g.sample_weights, NodeGraph=g.NodeGraph,
                     Adjacency=self.COO2SparseTransposedTensor(g.Adjacency),
                     CompositeAdjacencies=[self.COO2SparseTransposedTensor(i) for i in g.CompositeAdjacencies],
                     ArcNode=self.COO2SparseTransposedTensor(g.ArcNode), aggregation_mode=g.aggregation_mode)
@@ -422,7 +456,7 @@ class CompositeGraphTensor:
         """ Get the transposed sparse tensor from a sparse coo_matrix matrix """
         # SparseTensor is created and then reordered to be correctly computable. NOTE: reorder() recommended by TF2.0+
         indices = list(zip(coo_matrix.col, coo_matrix.row))
-        if not indices: indices=np.empty(shape=(0,2), dtype=int)
+        if not indices: indices = np.empty(shape=(0, 2), dtype=int)
         sparse_tensor = tf.SparseTensor(indices, values=coo_matrix.data, dense_shape=[coo_matrix.shape[1], coo_matrix.shape[0]])
         sparse_tensor = tf.sparse.reorder(sparse_tensor)
         sparse_tensor = tf.cast(sparse_tensor, dtype=tf.float32)

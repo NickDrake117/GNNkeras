@@ -47,9 +47,9 @@ class GraphObject:
         self.targets = targets.astype(self.dtype)
         self.sample_weights = sample_weights * np.ones(self.targets.shape[0])
 
-        # store dimensions
+        # store dimensions: first two columns of arcs contain nodes indices
         self.DIM_NODE_LABEL = nodes.shape[1]
-        self.DIM_ARC_LABEL = (arcs.shape[1] - 2)  # first two columns contain nodes indices
+        self.DIM_ARC_LABEL = arcs.shape[1] - 2
         self.DIM_TARGET = targets.shape[1]
 
         # setting the problem type: node, arcs or graph based + check existence of passed parameters in keys
@@ -143,7 +143,18 @@ class GraphObject:
             nodegraph = np.ones((nodes_output_coefficient, 1), dtype=np.float32) * 1 / nodes_output_coefficient
         return nodegraph
 
+    ## REPRESENTATION METHODs #########################################################################################
+    def __repr__(self):
+        set_mask_type = 'all' if np.all(self.set_mask) else 'mixed'
+        return f"graph(n={self.nodes.shape[0]}, a={self.arcs.shape[0]}, " \
+               f"ndim={self.DIM_NODE_LABEL}, adim={self.DIM_ARC_LABEL}, tdim={self.DIM_TARGET}, " \
+               f"set='{set_mask_type}', mode='{self.aggregation_mode}')"
+
     # -----------------------------------------------------------------------------------------------------------------
+    def __str__(self):
+        return self.__repr__()
+
+    ## SAVER METHODs ##################################################################################################
     def save(self, graph_folder_path: str) -> None:
         """ save graph in folder. All attributes are saved in numpy .npy files.
 
@@ -297,7 +308,8 @@ class GraphObject:
         nodes, nodes_lens, arcs, targets, set_mask, output_mask, sample_weights, nodegraph_list = zip(*[(i.getNodes(), i.nodes.shape[0],
                                                                                                          i.getArcs(), i.getTargets(),
                                                                                                          i.getSetMask(), i.getOutputMask(),
-                                                                                                         i.getSampleWeights(), i.getNodeGraph())
+                                                                                                         i.getSampleWeights(),
+                                                                                                         i.getNodeGraph())
                                                                                                         for i in glist])
 
         # get single matrices for new graph
@@ -318,6 +330,7 @@ class GraphObject:
         return self(arcs=arcs, nodes=nodes, targets=targets, problem_based=problem_based, set_mask=set_mask, output_mask=output_mask,
                     sample_weights=sample_weights, NodeGraph=nodegraph, aggregation_mode=aggregation_mode)
 
+    # -----------------------------------------------------------------------------------------------------------------
     @classmethod
     def fromGraphTensor(self, g, problem_based: str):
         nodegraph = None
@@ -328,8 +341,14 @@ class GraphObject:
 
 
 class GraphTensor:
+    ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self, nodes, arcs, targets, set_mask, output_mask, sample_weights, Adjacency, ArcNode, NodeGraph, aggregation_mode):
         dtype = tf.keras.backend.floatx()
+
+        # store dimensions: first two columns of arcs contain nodes indices
+        self.DIM_NODE_LABEL = nodes.shape[1]
+        self.DIM_ARC_LABEL = arcs.shape[1] - 2
+        self.DIM_TARGET = targets.shape[1]
 
         self.nodes = tf.constant(nodes, dtype=dtype)
         self.arcs = tf.constant(arcs, dtype=dtype)
@@ -350,7 +369,18 @@ class GraphTensor:
                            sample_weights=self.sample_weights, Adjacency=self.Adjacency, ArcNode=self.ArcNode, NodeGraph=self.NodeGraph,
                            aggregation_mode=self.aggregation_mode)
 
+    ## REPRESENTATION METHODs #########################################################################################
+    def __repr__(self):
+        set_mask_type = 'all' if tf.reduce_all(self.set_mask) else 'mixed'
+        return f"graph_tensor(n={self.nodes.shape[0]}, a={self.arcs.shape[0]}, " \
+               f"ndim={self.DIM_NODE_LABEL}, adim={self.DIM_ARC_LABEL}, tdim={self.DIM_TARGET}, " \
+               f"set='{set_mask_type}', mode='{self.aggregation_mode})"
+
     # -----------------------------------------------------------------------------------------------------------------
+    def __str__(self):
+        return self.__repr__()
+
+    ## CLASS and STATHIC METHODs ######################################################################################
     @classmethod
     def fromGraphObject(self, g: GraphObject):
         """ Create GraphTensor from GraphObject. Note that Adjacency and ArcNode are transposed so that GraphTensor.ArcNode and

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Union
 
 import numpy as np
@@ -12,7 +10,7 @@ from GNN.graph_class import GraphObject, GraphTensor
 #######################################################################################################################
 ### CLASS GRAPH GENERATORS ### FOR FEEDING THE MODEL DURING LEARNING PROCESS ##########################################
 #######################################################################################################################
-class GraphDataGenerator(tf.keras.utils.Sequence):
+class GraphGenerator(tf.keras.utils.Sequence):
     def __init__(self,
                  graphs: Union[GraphObject, list[GraphObject]],
                  problem_based: str,
@@ -69,7 +67,7 @@ class GraphDataGenerator(tf.keras.utils.Sequence):
 
 
 #######################################################################################################################
-class SingleGraphDataGenerator(tf.keras.utils.Sequence):
+class SingleGraphGenerator(tf.keras.utils.Sequence):
     def __init__(self,
                  graph: GraphObject,
                  problem_based: str,
@@ -101,13 +99,14 @@ class SingleGraphDataGenerator(tf.keras.utils.Sequence):
     def __getitem__(self, index):
         """ Generate one batch of data """
         g = self.graph_tensor
-        batch_set_mask = tf.constant(self.batch_masks[index, :], dtype=bool)
+        batch_set_mask = tf.constant(self.batch_masks[index], dtype=bool)
 
         out = [g.nodes, g.arcs, batch_set_mask[:, tf.newaxis], g.output_mask[:, tf.newaxis],
                (g.Adjacency.indices, g.Adjacency.values), (g.ArcNode.indices, g.ArcNode.values),
                g.NodeGraph]
 
-        mask = tf.ones((g.targets.shape[0]), dtype=bool) if self.problem_based == 'g' else tf.boolean_mask(batch_set_mask, g.output_mask)
+        if self.problem_based == 'g': mask = tf.ones((g.targets.shape[0]), dtype=bool)
+        else: mask = tf.boolean_mask(batch_set_mask, g.output_mask)
         targets = tf.boolean_mask(g.targets, mask)
         sample_weights = tf.boolean_mask(g.sample_weights, mask)
 
@@ -131,7 +130,7 @@ class SingleGraphDataGenerator(tf.keras.utils.Sequence):
 #######################################################################################################################
 ### CLASS GRAPH TENSOR GENERATORS ### FOR FEEDING THE MODEL DURING LEARNING PROCESS ###################################
 #######################################################################################################################
-class CompositeGraphDataGenerator(GraphDataGenerator):
+class CompositeGraphGenerator(GraphGenerator):
     def __getitem__(self, index):
         """ Generate one batch of data """
         g = self.graph_tensors[index]
@@ -143,7 +142,8 @@ class CompositeGraphDataGenerator(GraphDataGenerator):
                (g.ArcNode.indices, g.ArcNode.values),
                g.NodeGraph]
 
-        mask = tf.ones((g.targets.shape[0]), dtype=bool) if self.problem_based == 'g' else tf.boolean_mask(g.set_mask, g.output_mask)
+        if self.problem_based == 'g': mask = tf.ones((g.targets.shape[0]), dtype=bool)
+        else: mask = tf.boolean_mask(g.set_mask, g.output_mask)
         targets = tf.boolean_mask(g.targets, mask)
         sample_weights = tf.boolean_mask(g.sample_weights, mask)
 
