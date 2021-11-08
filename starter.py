@@ -6,10 +6,10 @@ import tensorflow as tf
 from numpy import random
 
 from GNN import GNN_utils as utils
-from GNN.GNN import GNNnodeBased, GNNedgeBased, GNNgraphBased
-from GNN.GraphGenerator import GraphDataGenerator
-from GNN.LGNN import LGNN
-from GNN.MLP import MLP, get_inout_dims
+from GNN.Models.GNN import GNNnodeBased, GNNedgeBased, GNNgraphBased
+from GNN.Generators.GraphGenerators import MultiGraphGenerator
+from GNN.Models.LGNN import LGNN
+from GNN.Models.MLP import MLP, get_inout_dims
 from GNN.graph_class import GraphObject
 
 #######################################################################################################################
@@ -28,9 +28,9 @@ use_MUTAG: bool = True
 # addressed_problem in ['c', 'r'] -> ['g' graph-based; 'n' node-based; 'a' arc-based;]
 problem_based       : str = 'n'
 addressed_problem   : str = 'c'
-graphs_number       : int = 1000
-min_nodes_number    : int = 15
-max_nodes_number    : int = 40
+graphs_number       : int = 5
+min_nodes_number    : int = 1500
+max_nodes_number    : int = 3000
 dim_node_label      : int = 5
 dim_arc_label       : int = 1
 dim_target          : int = 2
@@ -174,9 +174,9 @@ lgnn.compile(optimizer=optimizer, loss=loss_function, average_st_grads=True, met
 
 ### DATA PROCESSING
 # data generator
-gTr_Generator = GraphDataGenerator(gTr, problem_based, aggregation_mode)
-gVa_Generator = GraphDataGenerator(gVa, problem_based, aggregation_mode)
-gTe_Generator = GraphDataGenerator(gTe, problem_based, aggregation_mode)
+gTr_Generator = MultiGraphGenerator(gTr, problem_based, aggregation_mode)
+gVa_Generator = MultiGraphGenerator(gVa, problem_based, aggregation_mode)
+gTe_Generator = MultiGraphGenerator(gTe, problem_based, aggregation_mode)
 
 ### TRAINING PROCEDURE
 if os.path.exists(path_writer): shutil.rmtree(path_writer)

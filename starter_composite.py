@@ -6,10 +6,10 @@ import tensorflow as tf
 from numpy import random
 
 from GNN import GNN_utils as utils
-from GNN.CompositeGNN import CompositeGNNgraphBased
-from GNN.CompositeLGNN import CompositeLGNN
-from GNN.GraphGenerator import CompositeGraphDataGenerator
-from GNN.MLP import MLP, get_inout_dims
+from GNN.Models.CompositeGNN import CompositeGNNgraphBased
+from GNN.Models.CompositeLGNN import CompositeLGNN
+from GNN.Models.MLP import MLP, get_inout_dims
+from GNN.Generators.GraphGenerators import CompositeMultiGraphGenerator
 from GNN.composite_graph_class import CompositeGraphObject
 
 #######################################################################################################################
@@ -147,9 +147,9 @@ lgnn.compile(optimizer=optimizer, loss=loss_function, average_st_grads=True, met
 
 ### DATA PROCESSING
 # data generator
-gTr_Generator = CompositeGraphDataGenerator(gTr, problem_based, aggregation_mode)
-gVa_Generator = CompositeGraphDataGenerator(gVa, problem_based, aggregation_mode)
-gTe_Generator = CompositeGraphDataGenerator(gTe, problem_based, aggregation_mode)
+gTr_Generator = CompositeMultiGraphGenerator(gTr, problem_based, aggregation_mode)
+gVa_Generator = CompositeMultiGraphGenerator(gVa, problem_based, aggregation_mode)
+gTe_Generator = CompositeMultiGraphGenerator(gTe, problem_based, aggregation_mode)
 
 ### TRAINING PROCEDURE
 if os.path.exists(path_writer): shutil.rmtree(path_writer)
