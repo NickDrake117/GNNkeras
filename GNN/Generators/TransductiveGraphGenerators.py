@@ -12,7 +12,8 @@ from GNN.graph_class import GraphObject
 ### CLASS GRAPH GENERATORS FOR MULTIPLE HETEROGENEOUS DATA ### FOR FEEDING THE MODEL DURING LEARNING PROCESS ##########
 #######################################################################################################################
 class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
-    """ prendo grafi omogenei multipli e li trasforma in grafi eterogenei multipli con tipi [non_transduttivi, trasduttivi] """
+    """ Generator for dataset composed of multiple Homogeneous Graphs
+    The Homogeneous Graphs are converted into Heterogeneous Graphs, with nodes' types [transductive, non_transductive] """
 
     # -----------------------------------------------------------------------------------------------------------------
     def __init__(self,
@@ -74,6 +75,7 @@ class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
 
     # -----------------------------------------------------------------------------------------------------------------
     def on_epoch_end(self):
+        """ Updates indexes after each epoch """
         self.data = [self.get_transduction(g, self.transductive_rate, self.problem_based, self.dtype) for g in self.graph_objects]
         super().on_epoch_end()
 
@@ -82,6 +84,10 @@ class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
 ### CLASS GRAPH GENERATORS FOR SINGLE HETEROGENEOUS DATA ### FOR FEEDING THE MODEL DURING LEARNING PROCESS ############
 #######################################################################################################################
 class TransductiveSingleGraphGenerator(TransductiveMultiGraphGenerator, CompositeSingleGraphGenerator):
+    """ Generator for dataset composed of only one single Homogeneous Graph
+    The Homogeneous Graph is translated into an Heterogeneous Graph, with nodes' type [transductive, non_transductive] """
+
+    # -----------------------------------------------------------------------------------------------------------------
     def __init__(self,
                  graph: GraphObject,
                  problem_based: str,
@@ -104,6 +110,7 @@ class TransductiveSingleGraphGenerator(TransductiveMultiGraphGenerator, Composit
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
+        """ copy method - return a deep copy of the generator """
         new_gen = self.__class__(self.data.copy(), self.problem_based, self.trasductive_rate, self.batch_size, False)
         new_gen.shuffle = self.shuffle
         return new_gen

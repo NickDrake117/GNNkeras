@@ -65,7 +65,7 @@ class MultiGraphGenerator(tf.keras.utils.Sequence):
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
-        """ copy method """
+        """ copy method - return a deep copy of the generator """
         new_gen = self.__class__([i.copy() for i in self.data], self.problem_based, self.aggregation_mode, self.batch_size, False)
         new_gen.shuffle = self.shuffle
         return new_gen
@@ -84,6 +84,7 @@ class MultiGraphGenerator(tf.keras.utils.Sequence):
 
     # -----------------------------------------------------------------------------------------------------------------
     def build_batches(self):
+        """ create batches from generator data """
         graphs = [self.merge(self.data[i * self.batch_size: (i + 1) * self.batch_size], problem_based=self.problem_based,
                              aggregation_mode=self.aggregation_mode) for i in range(len(self))]
         self.graph_tensors = [self.to_graph_tensor(g) for g in graphs]
@@ -135,7 +136,7 @@ class SingleGraphGenerator(MultiGraphGenerator):  # (tf.keras.utils.Sequence, Gr
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
-        """ copy method """
+        """ copy method - return a deep copy of the generator """
         new_gen = self.__class__(self.data.copy(), self.problem_based, self.batch_size, False)
         new_gen.shuffle = self.shuffle
         return new_gen
@@ -147,6 +148,7 @@ class SingleGraphGenerator(MultiGraphGenerator):  # (tf.keras.utils.Sequence, Gr
 
     # -----------------------------------------------------------------------------------------------------------------
     def build_batches(self):
+        """ create batches from generator data """
         self.batch_masks = np.zeros((len(self), len(self.data.set_mask)), dtype=bool)
         for i in range(len(self)): self.batch_masks[i, self.set_mask_idx[i * self.batch_size: (i + 1) * self.batch_size]] = True
 
