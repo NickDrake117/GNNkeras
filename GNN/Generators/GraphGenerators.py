@@ -29,7 +29,7 @@ class MultiGraphGenerator(tf.keras.utils.Sequence):
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.dtype = tf.keras.backend.floatx()
-        self.on_epoch_end()
+        self.build_batches()
 
     # -----------------------------------------------------------------------------------------------------------------
     def __len__(self):
@@ -39,16 +39,14 @@ class MultiGraphGenerator(tf.keras.utils.Sequence):
     # -----------------------------------------------------------------------------------------------------------------
     def __getitem__(self, index):
         """ Generate one batch of data """
-        g, set_mask = self.get_data(index)
+        g, set_mask = self.get_batch(index)
 
         out = [g.nodes, g.arcs, set_mask[:, tf.newaxis], g.output_mask[:, tf.newaxis],
                (g.Adjacency.indices, g.Adjacency.values), (g.ArcNode.indices, g.ArcNode.values),
                g.NodeGraph]
 
-        if self.problem_based == 'g':
-            mask = tf.ones((g.targets.shape[0]), dtype=bool)
-        else:
-            mask = tf.boolean_mask(set_mask, g.output_mask)
+        if self.problem_based == 'g': mask = tf.ones((g.targets.shape[0]), dtype=bool)
+        else: mask = tf.boolean_mask(set_mask, g.output_mask)
 
         targets = tf.boolean_mask(g.targets, mask)
         sample_weights = tf.boolean_mask(g.sample_weights, mask)
@@ -79,18 +77,23 @@ class MultiGraphGenerator(tf.keras.utils.Sequence):
         self.on_epoch_end()
 
     # -----------------------------------------------------------------------------------------------------------------
-    def get_data(self, index):
+    def get_batch(self, index):
         """ return the single graph_tensor corresponding to the considered batch and its mask """
         g = self.graph_tensors[index]
         return g, g.set_mask
 
     # -----------------------------------------------------------------------------------------------------------------
-    def on_epoch_end(self):
-        """ Updates indexes after each epoch """
-        if self.shuffle: np.random.shuffle(self.data)
+    def build_batches(self):
         graphs = [self.merge(self.data[i * self.batch_size: (i + 1) * self.batch_size], problem_based=self.problem_based,
                              aggregation_mode=self.aggregation_mode) for i in range(len(self))]
         self.graph_tensors = [self.to_graph_tensor(g) for g in graphs]
+
+    # -----------------------------------------------------------------------------------------------------------------
+    def on_epoch_end(self):
+        """ Updates indexes after each epoch """
+        if self.shuffle:
+            np.random.shuffle(self.data)
+            self.build_batches()
 
 
 #######################################################################################################################
@@ -116,8 +119,8 @@ class SingleGraphGenerator(MultiGraphGenerator):  # (tf.keras.utils.Sequence, Gr
         self.shuffle = shuffle
         self.dtype = tf.keras.backend.floatx()
 
-        self.gen_set_mask_idx = np.argwhere(self.data.set_mask).squeeze()
-        self.on_epoch_end()
+        self.set_mask_idx = np.argwhere(self.data.set_mask).squeeze()
+        self.build_batches()
 
     # -----------------------------------------------------------------------------------------------------------------
     def __len__(self):
@@ -138,18 +141,21 @@ class SingleGraphGenerator(MultiGraphGenerator):  # (tf.keras.utils.Sequence, Gr
         return new_gen
 
     # -----------------------------------------------------------------------------------------------------------------
-    def get_data(self, index):
+    def get_batch(self, index):
         """ return the single graph_tensor and a mask for the considered batch """
         return self.graph_tensor, tf.constant(self.batch_masks[index], dtype=bool)
 
     # -----------------------------------------------------------------------------------------------------------------
+    def build_batches(self):
+        self.batch_masks = np.zeros((len(self), len(self.data.set_mask)), dtype=bool)
+        for i in range(len(self)): self.batch_masks[i, self.set_mask_idx[i * self.batch_size: (i + 1) * self.batch_size]] = True
+
+    # -----------------------------------------------------------------------------------------------------------------
     def on_epoch_end(self):
         """ Updates indexes after each epoch """
-        set_mask_idx = self.gen_set_mask_idx.copy()
-        if self.shuffle: np.random.shuffle(set_mask_idx)
-
-        self.batch_masks = np.zeros((len(self), len(self.data.set_mask)), dtype=bool)
-        for i in range(len(self)): self.batch_masks[i, set_mask_idx[i * self.batch_size: (i + 1) * self.batch_size]] = True
+        if self.shuffle:
+            np.random.shuffle(self.set_mask_idx)
+            self.build_batches()
 
 
 #######################################################################################################################
@@ -170,7 +176,7 @@ class CompositeMultiGraphGenerator(MultiGraphGenerator):
     # -----------------------------------------------------------------------------------------------------------------
     def __getitem__(self, index):
         """ Generate one batch of data """
-        g, set_mask = self.get_data(index)
+        g, set_mask = self.get_batch(index)
 
         out = [g.nodes, g.arcs, g.DIM_NODE_LABEL[:, tf.newaxis], g.type_mask,
                g.set_mask[:, tf.newaxis], g.output_mask[:, tf.newaxis],
@@ -179,10 +185,8 @@ class CompositeMultiGraphGenerator(MultiGraphGenerator):
                (g.ArcNode.indices, g.ArcNode.values),
                g.NodeGraph]
 
-        if self.problem_based == 'g':
-            mask = tf.ones((g.targets.shape[0]), dtype=bool)
-        else:
-            mask = tf.boolean_mask(set_mask, g.output_mask)
+        if self.problem_based == 'g': mask = tf.ones((g.targets.shape[0]), dtype=bool)
+        else: mask = tf.boolean_mask(set_mask, g.output_mask)
 
         targets = tf.boolean_mask(g.targets, mask)
         sample_weights = tf.boolean_mask(g.sample_weights, mask)
