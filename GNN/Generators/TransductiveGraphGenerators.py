@@ -16,7 +16,7 @@ class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
 
     # -----------------------------------------------------------------------------------------------------------------
     def __init__(self,
-                 graphs: Union[list[GraphObject], list[CompositeGraphObject]],
+                 graphs: list[GraphObject],
                  problem_based: str,
                  aggregation_mode: str,
                  transductive_rate: float = 0.5,
@@ -68,9 +68,8 @@ class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
                f"batch_size={self.batch_size}, shuffle={self.shuffle})"
 
     # -----------------------------------------------------------------------------------------------------------------
-    def on_epoch_end(self):
+    def build_batches(self):
         """ Updates graphs after each epoch: get the transductive (eterogeneous) version of graphs and then merge """
-        if self.shuffle: np.random.shuffle(self.data)
         graphs = [self.get_transduction(g) for g in self.data]
         graphs = [self.merge(graphs[i * self.batch_size: (i + 1) * self.batch_size], problem_based=self.problem_based,
                              aggregation_mode=self.aggregation_mode) for i in range(len(self))]
@@ -93,10 +92,9 @@ class TransductiveSingleGraphGenerator(TransductiveMultiGraphGenerator, Composit
         self.transductive_rate = transductive_rate
         self.batch_size = batch_size
         self.shuffle = shuffle
-        self.dtype = tf.keras.backend.floatx()
 
-        self.gen_set_mask_idx = np.argwhere(self.data.set_mask).squeeze()
-        self.on_epoch_end()
+        self.set_mask_idx = np.argwhere(self.data.set_mask).squeeze()
+        self.build_batches()
 
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
@@ -114,8 +112,6 @@ class TransductiveSingleGraphGenerator(TransductiveMultiGraphGenerator, Composit
     # -----------------------------------------------------------------------------------------------------------------
     def on_epoch_end(self):
         """ Updates indexes after each epoch """
-        CompositeSingleGraphGenerator.on_epoch_end(self)
-
-        # overwrite graph_tensor, since at the end of the epoch the transductive nodes set is changed
         g = self.get_transduction(self.data)
         self.graph_tensor = self.to_graph_tensor(g)
+        CompositeSingleGraphGenerator.on_epoch_end(self)
