@@ -27,21 +27,22 @@ class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
         super().__init__(graphs, problem_based, aggregation_mode, batch_size, shuffle)
 
     # -----------------------------------------------------------------------------------------------------------------
-    def get_transduction(self, g: GraphObject):
+    @staticmethod
+    def get_transduction(g: GraphObject, transductive_rate: float, problem_based: str, dtype):
         """ get the transductive version of :param g: -> an heterogeneous graph with non-transductive/transductive nodes """
         transductive_node_mask = np.logical_and(g.set_mask, g.output_mask)
 
         indices = np.argwhere(transductive_node_mask).squeeze()
         np.random.shuffle(indices)
 
-        non_transductive_number = int(np.ceil(np.sum(transductive_node_mask) * (1 - self.transductive_rate)))
+        non_transductive_number = int(np.ceil(np.sum(transductive_node_mask) * (1 - transductive_rate)))
         transductive_node_mask[indices[:non_transductive_number]] = False
 
         transductive_target_mask = transductive_node_mask[g.output_mask]
 
         # new nodes/arcs label
-        length = {'a': g.arcs.shape[0]}.get(self.problem_based, g.nodes.shape[0])
-        labelplus = np.zeros((length, g.DIM_TARGET), dtype=self.dtype)
+        length = {'a': g.arcs.shape[0]}.get(problem_based, g.nodes.shape[0])
+        labelplus = np.zeros((length, g.DIM_TARGET), dtype=dtype)
         labelplus[transductive_node_mask] = g.targets[transductive_target_mask]
 
         # nuove quantità per target, nodi, output, dim_nodes, type_mask ecc.
@@ -58,8 +59,10 @@ class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
         output_mask_new[transductive_node_mask] = False
 
         return CompositeGraphObject(arcs=g.getArcs(), nodes=nodes_new, targets=target_new, type_mask=type_mask,
-                                    dim_node_labels=dim_node_label_new, problem_based=self.problem_based,
+                                    dim_node_labels=dim_node_label_new, problem_based=problem_based,
                                     set_mask=g.getSetMask(), output_mask=output_mask_new)
+
+
 
     def __repr__(self):
         problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.problem_based]
@@ -87,14 +90,11 @@ class TransductiveSingleGraphGenerator(TransductiveMultiGraphGenerator, Composit
                  batch_size: int = 32,
                  shuffle: bool = True):
         """ Initialization """
-        self.data = graph
-        self.problem_based = problem_based
-        self.transductive_rate = transductive_rate
-        self.batch_size = batch_size
-        self.shuffle = shuffle
+        g = self.get_transduction(graph, transductive_rate, problem_based, tf.keras.backend.floatx())
+        CompositeSingleGraphGenerator.__init__(super, g, problem_based, batch_size, shuffle)
 
-        self.set_mask_idx = np.argwhere(self.data.set_mask).squeeze()
-        self.build_batches()
+        self.transductive_rate = transductive_rate
+        self.data = graph
 
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
@@ -112,6 +112,6 @@ class TransductiveSingleGraphGenerator(TransductiveMultiGraphGenerator, Composit
     # -----------------------------------------------------------------------------------------------------------------
     def on_epoch_end(self):
         """ Updates indexes after each epoch """
-        g = self.get_transduction(self.data)
+        g = self.get_transduction(self.data, self.transductive_rate, self.problem_based, self.dtype)
         self.graph_tensor = self.to_graph_tensor(g)
         CompositeSingleGraphGenerator.on_epoch_end(self)
