@@ -23,8 +23,11 @@ class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
                  batch_size: int = 32,
                  shuffle: bool = True):
         """ Initialization """
+        self.graph_objects = graphs
         self.transductive_rate = transductive_rate
-        super().__init__(graphs, problem_based, aggregation_mode, batch_size, shuffle)
+
+        gs = [self.get_transduction(g, transductive_rate, problem_based, tf.keras.backend.floatx()) for g in graphs]
+        super().__init__(gs, problem_based, aggregation_mode, batch_size, shuffle)
 
     # -----------------------------------------------------------------------------------------------------------------
     @staticmethod
@@ -62,8 +65,7 @@ class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
                                     dim_node_labels=dim_node_label_new, problem_based=problem_based,
                                     set_mask=g.getSetMask(), output_mask=output_mask_new)
 
-
-
+    # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
         problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.problem_based]
         return f"transductive_graph_generator(multiple {problem}-based, len={len(self)}, " \
@@ -71,12 +73,9 @@ class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
                f"batch_size={self.batch_size}, shuffle={self.shuffle})"
 
     # -----------------------------------------------------------------------------------------------------------------
-    def build_batches(self):
-        """ Updates graphs after each epoch: get the transductive (eterogeneous) version of graphs and then merge """
-        graphs = [self.get_transduction(g) for g in self.data]
-        graphs = [self.merge(graphs[i * self.batch_size: (i + 1) * self.batch_size], problem_based=self.problem_based,
-                             aggregation_mode=self.aggregation_mode) for i in range(len(self))]
-        self.graph_tensors = [self.to_graph_tensor(g) for g in graphs]
+    def on_epoch_end(self):
+        self.data = [self.get_transduction(g, self.transductive_rate, self.problem_based, self.dtype) for g in self.graph_objects]
+        super().on_epoch_end()
 
 
 #######################################################################################################################
@@ -90,11 +89,11 @@ class TransductiveSingleGraphGenerator(TransductiveMultiGraphGenerator, Composit
                  batch_size: int = 32,
                  shuffle: bool = True):
         """ Initialization """
-        g = self.get_transduction(graph, transductive_rate, problem_based, tf.keras.backend.floatx())
-        CompositeSingleGraphGenerator.__init__(super, g, problem_based, batch_size, shuffle)
-
+        self.graph_object = graph
         self.transductive_rate = transductive_rate
-        self.data = graph
+
+        g = self.get_transduction(graph, transductive_rate, problem_based, tf.keras.backend.floatx())
+        CompositeSingleGraphGenerator.__init__(self, g, problem_based, batch_size, shuffle)
 
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
@@ -112,6 +111,6 @@ class TransductiveSingleGraphGenerator(TransductiveMultiGraphGenerator, Composit
     # -----------------------------------------------------------------------------------------------------------------
     def on_epoch_end(self):
         """ Updates indexes after each epoch """
-        g = self.get_transduction(self.data, self.transductive_rate, self.problem_based, self.dtype)
+        g = self.get_transduction(self.graph_object, self.transductive_rate, self.problem_based, self.dtype)
         self.graph_tensor = self.to_graph_tensor(g)
         CompositeSingleGraphGenerator.on_epoch_end(self)
