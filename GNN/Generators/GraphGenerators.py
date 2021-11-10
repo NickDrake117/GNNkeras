@@ -171,9 +171,9 @@ class CompositeMultiGraphGenerator(MultiGraphGenerator):
     to_graph_tensor = CompositeGraphTensor.fromGraphObject
 
     # -----------------------------------------------------------------------------------------------------------------
-    def __init__(self, graphs: list[CompositeGraphObject], *args):
+    def __init__(self, graphs: list[CompositeGraphObject], *args, **kwargs):
         """ Initialization - re-defined only to hint graphs """
-        super().__init__(graphs, *args)
+        super().__init__(graphs, *args, **kwargs)
 
     # -----------------------------------------------------------------------------------------------------------------
     def __getitem__(self, index):
@@ -212,9 +212,9 @@ class CompositeSingleGraphGenerator(SingleGraphGenerator, CompositeMultiGraphGen
     to_graph_tensor = CompositeGraphTensor.fromGraphObject
 
     # -----------------------------------------------------------------------------------------------------------------
-    def __init__(self, graph: CompositeGraphObject, *args):
+    def __init__(self, graph: CompositeGraphObject, *args, **kwargs):
         """ Initialization - re-defined only to hint graph """
-        SingleGraphGenerator.__init__(self, graph, *args)
+        SingleGraphGenerator.__init__(self, graph, *args, **kwargs)
 
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):

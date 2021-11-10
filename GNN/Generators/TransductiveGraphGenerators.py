@@ -21,14 +21,13 @@ class TransductiveMultiGraphGenerator(CompositeMultiGraphGenerator):
                  problem_based: str,
                  aggregation_mode: str,
                  transductive_rate: float = 0.5,
-                 batch_size: int = 32,
-                 shuffle: bool = True):
+                 *args, **kwargs):
         """ Initialization """
         self.graph_objects = graphs
         self.transductive_rate = transductive_rate
 
         gs = [self.get_transduction(g, transductive_rate, problem_based, tf.keras.backend.floatx()) for g in graphs]
-        super().__init__(gs, problem_based, aggregation_mode, batch_size, shuffle)
+        super().__init__(gs, problem_based, aggregation_mode, *args, **kwargs)
 
     # -----------------------------------------------------------------------------------------------------------------
     @staticmethod
@@ -92,14 +91,13 @@ class TransductiveSingleGraphGenerator(TransductiveMultiGraphGenerator, Composit
                  graph: GraphObject,
                  problem_based: str,
                  transductive_rate: float = 0.5,
-                 batch_size: int = 32,
-                 shuffle: bool = True):
+                 *args, **kwargs):
         """ Initialization """
         self.graph_object = graph
         self.transductive_rate = transductive_rate
 
         g = self.get_transduction(graph, transductive_rate, problem_based, tf.keras.backend.floatx())
-        CompositeSingleGraphGenerator.__init__(self, g, problem_based, batch_size, shuffle)
+        CompositeSingleGraphGenerator.__init__(self, g, problem_based, *args, **kwargs)
 
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
