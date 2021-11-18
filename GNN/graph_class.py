@@ -357,8 +357,10 @@ class GraphTensor:
         self.set_mask = tf.constant(set_mask, dtype=bool)
         self.output_mask = tf.constant(output_mask, dtype=bool)
         self.aggregation_mode = aggregation_mode
-        self.NodeGraph = tf.constant([], dtype=dtype, )
+        
+        self.NodeGraph = tf.constant([], dtype=dtype)
         if NodeGraph is not None: self.NodeGraph = tf.constant(NodeGraph, dtype=dtype)
+        
         # Adjacency and ArcNode in GraphTensor MUST BE already transposed!
         self.Adjacency = tf.sparse.SparseTensor.from_value(Adjacency)
         self.ArcNode = tf.sparse.SparseTensor.from_value(ArcNode)
