@@ -408,7 +408,7 @@ class CompositeGraphTensor:
         self.DIM_NODE_LABELS = tf.constant(dim_node_labels)
         self.aggregation_mode = aggregation_mode
 
-        self.NodeGraph = None
+        self.NodeGraph = tf.constant([], dtype=dtype)
         if NodeGraph is not None: self.NodeGraph = tf.constant(NodeGraph, dtype=dtype)
 
         # Adjacency and ArcNode in GraphTensor MUST BE already transposed!
