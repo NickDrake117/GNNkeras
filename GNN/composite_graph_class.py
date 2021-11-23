@@ -95,16 +95,16 @@ class CompositeGraphObject:
         """
         return CompositeGraphObject(arcs=self.getArcs(), nodes=self.getNodes(), targets=self.getTargets(), type_mask=self.getTypeMask(),
                                     dim_node_labels=self.DIM_NODE_LABEL, set_mask=self.getSetMask(), output_mask=self.getOutputMask(),
-                                    sample_weights=self.sample_weights, NodeGraph=self.getNodeGraph(),
+                                    sample_weights=self.getSampleWeights(), NodeGraph=self.getNodeGraph(),
                                     aggregation_mode=self.aggregation_mode)
 
     # -----------------------------------------------------------------------------------------------------------------
     def buildAdjacency(self):
         """ Build 'Aggregated' Adjacency Matrix ADJ, s.t. ADJ[i,j]=value if an edge (i,j) exists in graph edges set.
         value is set by self.aggregation_mode: 'sum':1, 'normalized':1/self.nodes.shape[0], 'average':1/number_of_neighbors """
-        values = self.getArcNode().data
-        indices = self.arcs[:, :2].astype(int)
-        return coo_matrix((values, (indices[:, 0], indices[:, 1])), shape=(self.nodes.shape[0], self.nodes.shape[0]), dtype=self.dtype)
+        values = self.ArcNode.data
+        indices = zip(*self.arcs[:, :2].astype(int))
+        return coo_matrix((values, indices), shape=(self.nodes.shape[0], self.nodes.shape[0]), dtype=self.dtype)
 
     def buildCompositeAdjacency(self):
         """ Build a list ADJ of Composite Aggregated Adjacency Matrices, s.t. ADJ[t][i,j]=value if an edge (i,j) exists AND type(i)==k
@@ -350,8 +350,8 @@ class CompositeGraphObject:
             raise TypeError('type of param <glist> must be list of str \'path-like\' or GraphObjects')
 
         nodes, nodes_lens, arcs, dim_node_labels, type_mask, targets, set_mask, output_mask, sample_weights, nodegraph_list = \
-            zip(*[(i.getNodes(), i.nodes.shape[0], i.getArcs(), i.DIM_NODE_LABEL, i.getTypeMask(), i.getTargets(), i.getSetMask(),
-                   i.getOutputMask(), i.getSampleWeights(), i.getNodeGraph()) for i in glist])
+            zip(*[(i.getNodes(), i.nodes.shape[0], i.getArcs(), i.DIM_NODE_LABEL, i.getTypeMask(), i.getTargets(),
+                   i.getSetMask(), i.getOutputMask(), i.getSampleWeights(), i.getNodeGraph()) for i in glist])
 
         # check if every graphs has the same DIM_NODE_LABEL attribute
         dim_node_labels = set(tuple(i) for i in dim_node_labels)

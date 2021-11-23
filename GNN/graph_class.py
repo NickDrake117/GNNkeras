@@ -90,9 +90,9 @@ class GraphObject:
     def buildAdiacency(self):
         """ Build 'Aggregated' Adjacency Matrix ADJ, s.t. ADJ[i,j]=value if edge (i,j) exists in graph edges set.
         value is set by self.aggregation_mode: 'sum':1, 'normalized':1/self.nodes.shape[0], 'average':1/number_of_neighbors """
-        values = self.getArcNode().data
-        indices = self.arcs[:, :2].astype(int)
-        return coo_matrix((values, (indices[:, 0], indices[:, 1])), shape=(self.nodes.shape[0], self.nodes.shape[0]), dtype=self.dtype)
+        values = self.ArcNode.data
+        indices = zip(*self.arcs[:, :2].astype(int))
+        return coo_matrix((values, indices), shape=(self.nodes.shape[0], self.nodes.shape[0]), dtype=self.dtype)
 
     # -----------------------------------------------------------------------------------------------------------------
     def buildArcNode(self):
@@ -357,10 +357,10 @@ class GraphTensor:
         self.set_mask = tf.constant(set_mask, dtype=bool)
         self.output_mask = tf.constant(output_mask, dtype=bool)
         self.aggregation_mode = aggregation_mode
-        
+
         self.NodeGraph = tf.constant([], dtype=dtype)
         if NodeGraph is not None: self.NodeGraph = tf.constant(NodeGraph, dtype=dtype)
-        
+
         # Adjacency and ArcNode in GraphTensor MUST BE already transposed!
         self.Adjacency = tf.sparse.SparseTensor.from_value(Adjacency)
         self.ArcNode = tf.sparse.SparseTensor.from_value(ArcNode)
