@@ -75,6 +75,23 @@ patience    : int = 10
 # training procedure
 epochs      : int = 10
 
+
+#######################################################################################################################
+# GPU OPTIONS #########################################################################################################
+#######################################################################################################################
+# set <use_gpu> parameter in this section in order to use gpu during learning procedure.
+# Note that if gpu is not available, use_gpu is set automatically to False.
+
+use_gpu = True
+target_gpu = 0
+
+# set target gpu as the only visible device
+physical_devices = tf.config.list_physical_devices('GPU')
+if use_gpu and len(physical_devices) != 0:
+    tf.config.set_visible_devices(physical_devices[int(target_gpu)], device_type='GPU')
+    tf.config.experimental.set_memory_growth(physical_devices[int(target_gpu)], True)
+
+
 #######################################################################################################################
 # SCRIPT ##############################################################################################################
 #######################################################################################################################
