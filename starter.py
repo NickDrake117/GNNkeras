@@ -192,5 +192,5 @@ early_stopping_lgnn = [tf.keras.callbacks.EarlyStopping(monitor=monitored, resto
 callbacks_lgnn = list(zip(tensorboard_lgnn, early_stopping_lgnn))
 if training_mode != 'serial': callbacks_lgnn = callbacks_lgnn[0]
 
-#gnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer, callbacks=callbacks_gnn)
+# gnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer, callbacks=callbacks_gnn)
 # lgnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer, callbacks=callbacks_lgnn)

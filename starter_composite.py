@@ -9,7 +9,7 @@ from GNN import GNN_utils as utils
 from GNN.Models.CompositeGNN import CompositeGNNgraphBased
 from GNN.Models.CompositeLGNN import CompositeLGNN
 from GNN.Models.MLP import MLP, get_inout_dims
-from GNN.Generators.GraphGenerators import CompositeMultiGraphGenerator
+from GNN.Sequencers.GraphSequencers import CompositeMultiGraphSequencer
 from GNN.composite_graph_class import CompositeGraphObject
 
 #######################################################################################################################
@@ -83,8 +83,7 @@ epochs      : int = 10
 # from MUTAG
 addressed_problem = 'c'
 problem_based = 'g'
-#from load_MUTAG import composite_graphs as graphs
-graphs = [CompositeGraphObject.load(f'EsempiGrafiEterogenei/{i}', problem_based, aggregation_mode) for i in os.listdir('EsempiGrafiEterogenei')]
+from load_MUTAG import composite_graphs as graphs
 
 ### PREPROCESSING
 # SPLITTING DATASET in Train, Validation and Test set
@@ -94,13 +93,6 @@ gTe = [graphs[i] for i in iTe]
 gVa = [graphs[i] for i in iVa]
 gGen = gTr[0].copy()
 
-# GRAPHS NORMALIZATION, based on training graphs
-'''if normalize:
-    utils.normalize_graphs(gTr, gVa, gTe,
-                           based_on='gTr',
-                           norm_rangeN=norm_nodes_range,
-                           norm_rangeA=norm_arcs_range)
-'''
 ### MODELS
 # NETS - STATE
 input_net_st, layers_net_st = zip(*[get_inout_dims(net_name='state', dim_node_label=gGen.DIM_NODE_LABEL,
@@ -120,12 +112,7 @@ nets_St = [[MLP(input_dim=s, layers=j,
                 name=f'State_{idx}') for s in i] for idx, (i, j) in enumerate(zip(input_net_st, layers_net_st))]
 
 # NETS - OUTPUT
-input_net_out, layers_net_out = zip(*[get_inout_dims(net_name='output', dim_node_label=gGen.DIM_NODE_LABEL,
-                                                     dim_arc_label=gGen.DIM_ARC_LABEL, dim_target=gGen.DIM_TARGET,
-                                                     problem_based=problem_based, dim_state=dim_state,
-                                                     hidden_units=hidden_units_net_output,
-                                                     layer=i, get_state=get_state, get_output=get_output) for i in range(layers)])
-nets_Out = [MLP(input_dim=k, layers=j,
+nets_Out = MLP(input_dim=(dim_state,), layers=[2],
                 activations=activations_net_output,
                 kernel_initializer=kernel_init_net_output,
                 bias_initializer=bias_init_net_output,
@@ -134,22 +121,22 @@ nets_Out = [MLP(input_dim=k, layers=j,
                 dropout_rate=dropout_rate_out,
                 dropout_pos=dropout_pos_out,
                 batch_normalization = batch_normalization_out,
-                name=f'Out_{idx}') for idx, (i, j) in enumerate(zip(input_net_out, layers_net_out)) for k in i]
+                name=f'Out_{1}')
 
 # GNN
-gnn = CompositeGNNgraphBased(nets_St[0], nets_Out[0], dim_state, max_iter, state_threshold).copy()
+gnn = CompositeGNNgraphBased(nets_St[0], nets_Out, dim_state, max_iter, state_threshold).copy()
 gnn.compile(optimizer=optimizer, loss=loss_function, average_st_grads=False, metrics=['accuracy', 'mse'], run_eagerly=True)
 
 # LGNN
-lgnn = CompositeLGNN([CompositeGNNgraphBased(s, o, dim_state, max_iter, state_threshold) for s, o in zip(nets_St, nets_Out)], get_state, get_output)
+lgnn = CompositeLGNN([CompositeGNNgraphBased(s, nets_Out, dim_state, max_iter, state_threshold) for s in nets_St], get_state, get_output)
 lgnn.compile(optimizer=optimizer, loss=loss_function, average_st_grads=True, metrics=['accuracy', 'mse'], run_eagerly=True,
              training_mode=training_mode)
 
 ### DATA PROCESSING
 # data generator
-gTr_Generator = CompositeMultiGraphGenerator(gTr, problem_based, aggregation_mode)
-gVa_Generator = CompositeMultiGraphGenerator(gVa, problem_based, aggregation_mode)
-gTe_Generator = CompositeMultiGraphGenerator(gTe, problem_based, aggregation_mode)
+gTr_Sequencer = CompositeMultiGraphSequencer(gTr, problem_based, aggregation_mode)
+gVa_Sequencer = CompositeMultiGraphSequencer(gVa, problem_based, aggregation_mode)
+gTe_Sequencer = CompositeMultiGraphSequencer(gTe, problem_based, aggregation_mode)
 
 ### TRAINING PROCEDURE
 if os.path.exists(path_writer): shutil.rmtree(path_writer)
@@ -166,5 +153,5 @@ callbacks_lgnn = list(zip(tensorboard_lgnn, early_stopping_lgnn))
 if training_mode != 'serial': callbacks_lgnn = callbacks_lgnn[0]
 
 
-# gnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator, callbacks=callbacks_gnn)
-# lgnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator, callbacks=callbacks_lgnn)
+# gnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer, callbacks=callbacks_gnn)
+# lgnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer, callbacks=callbacks_lgnn)
