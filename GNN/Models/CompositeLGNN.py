@@ -1,16 +1,17 @@
-from typing import Union
-
-import tensorflow
+# codinf=utf-8
 import tensorflow as tf
 
+from typing import Union
 from GNN.Models.CompositeGNN import CompositeGNNnodeBased, CompositeGNNedgeBased, CompositeGNNgraphBased
 
 
 #######################################################################################################################
 ### CLASS LGNN - GENERAL ##############################################################################################
-######################################################################################################################
+#######################################################################################################################
 class CompositeLGNN(tf.keras.Model):
     """ LGNN for general purpose problem """
+
+    process_inputs = staticmethod(CompositeGNNnodeBased.process_inputs)
 
     ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
@@ -119,24 +120,6 @@ class CompositeLGNN(tf.keras.Model):
         if training: return k, state, out
         return out[-1]
 
-    # -----------------------------------------------------------------------------------------------------------------
-    @staticmethod
-    def process_inputs(inputs):
-        """ convert some inputs in SparseTensor (not handled by default) and squeeze masks for correct computation """
-
-        # get a list from :param inputs: tuple, so as to set elements in list (since a tuple is not settable)
-        inputs = list(inputs)
-
-        # squeeze inputs: [2] dim node labels, [4] set mask, [5] output mask to make them 1-dimensional (length,)
-        inputs[2], inputs[4], inputs[5] = [tf.squeeze(inputs[i], axis=-1) for i in [2, 4, 5]]
-
-        # initialize sparse tensors -> [6] adjacency (nodes, nodes), [7] composite adjacency list[(nodes, nodes)], [8] arcnode (nodes, arcs)
-        inputs[6] = tf.SparseTensor(inputs[6][0], values=tf.squeeze(inputs[6][1]), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]])
-        inputs[8] = tf.SparseTensor(inputs[8][0], values=tf.squeeze(inputs[8][1]), dense_shape=[inputs[0].shape[0], inputs[1].shape[0]])
-        inputs[7] = [tf.SparseTensor(i, values=tf.squeeze(v, axis=-1), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]]) for i, v in inputs[7]]
-
-        return inputs
-
     ## LOOP METHODS ###################################################################################################
     def update_graph(self, nodes, arcs, dim_node_labels, set_mask, output_mask, state, output) -> tuple:
         """ update nodes and arcs tensor based on get_state and get_output attributes
@@ -176,14 +159,12 @@ class CompositeLGNN(tf.keras.Model):
         return nodes, arcs, dim_node_labels
 
     # -----------------------------------------------------------------------------------------------------------------
-    def Loop(self, nodes, arcs, dim_node_labels, type_mask, set_mask, output_mask, transposed_adjacency, transposed_composite_adjacencies,
-        transposed_arcnode, nodegraph, training: bool = False) -> tuple[list[tf.Tensor], tf.Tensor, list[tf.Tensor]]:
+    def Loop(self, nodes, arcs, dim_node_labels, type_mask, set_mask, output_mask, composite_adjacencies, adjacency, arcnode, nodegraph,
+             training: bool = False) -> tuple[list[tf.Tensor], tf.Tensor, list[tf.Tensor]]:
 
         """ Process a single GraphObject/GraphTensor element g, returning 3 lists of iteration(s), state(s) and output(s) """
 
-        #constant_inputs = [dim_node_labels, type_mask, set_mask, output_mask, transposed_adjacency, transposed_composite_adjacencies, transposed_arcnode, nodegraph]
-        constant_inputs = [type_mask, set_mask, output_mask, transposed_adjacency, transposed_composite_adjacencies,
-                           transposed_arcnode, nodegraph]
+        constant_inputs = [type_mask, set_mask, output_mask, composite_adjacencies, adjacency, arcnode, nodegraph]
 
         # deep copy of nodes and arcs
         dtype = tf.keras.backend.floatx()
@@ -199,7 +180,7 @@ class CompositeLGNN(tf.keras.Model):
             # append new k, new states and new gnn output
             K.append(k)
             states.append(state)
-            outs.append(tf.matmul(nodegraph, out, transpose_a=True) if isinstance(gnn, CompositeGNNgraphBased) else out)
+            outs.append(tf.sparse.sparse_dense_matmul(nodegraph, out, adjoint_a=True) if isinstance(gnn, CompositeGNNgraphBased) else out)
 
             # update graph with nodes' state and  nodes/arcs' output of the current GNN layer, to feed next GNN layer
             nodes, arcs, dim_node_labels = self.update_graph(nodes_0, arcs_0, dim_node_labels, set_mask, output_mask, state, out)

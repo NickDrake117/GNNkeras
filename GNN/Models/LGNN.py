@@ -1,8 +1,7 @@
-from typing import Union
-
-import tensorflow
+# codinf=utf-8
 import tensorflow as tf
 
+from typing import Union
 from GNN.Models.GNN import GNNnodeBased, GNNedgeBased, GNNgraphBased
 
 
@@ -11,6 +10,8 @@ from GNN.Models.GNN import GNNnodeBased, GNNedgeBased, GNNgraphBased
 #######################################################################################################################
 class LGNN(tf.keras.Model):
     """ LGNN for general purpose problem """
+
+    process_inputs = staticmethod(GNNnodeBased.process_inputs)
 
     ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
@@ -119,23 +120,6 @@ class LGNN(tf.keras.Model):
         if training: return k, state, out
         return out[-1]
 
-    # -----------------------------------------------------------------------------------------------------------------
-    @staticmethod
-    def process_inputs(inputs):
-        """ convert some inputs in SparseTensor (not handled by default) and squeeze masks for correct computation """
-
-        # get a list from :param inputs: tuple, so as to set elements in list (since a tuple is not settable)
-        inputs = list(inputs)
-
-        # squeeze inputs: [2] set mask, [3] output mask to make them 1-dimensional (length,)
-        inputs[2], inputs[3] = [tf.squeeze(inputs[i], axis=-1) for i in [2, 3]]
-
-        # initialize sparse tensors -> [4] adjacency (nodes, nodes), [5] arcnode (nodes, arcs)
-        inputs[4] = tf.SparseTensor(inputs[4][0], values=tf.squeeze(inputs[4][1]), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]])
-        inputs[5] = tf.SparseTensor(inputs[5][0], values=tf.squeeze(inputs[5][1]), dense_shape=[inputs[0].shape[0], inputs[1].shape[0]])
-
-        return inputs
-
     ## LOOP METHODS ###################################################################################################
     def update_graph(self, nodes, arcs, set_mask, output_mask, state, output) -> tuple:
         """ update nodes and arcs tensor based on get_state and get_output attributes
@@ -174,11 +158,11 @@ class LGNN(tf.keras.Model):
         return nodes, arcs
 
     # -----------------------------------------------------------------------------------------------------------------
-    def Loop(self, nodes, arcs, set_mask, output_mask, transposed_adjacency, transposed_arcnode, nodegraph,
+    def Loop(self, nodes, arcs, set_mask, output_mask, adjacency, arcnode, nodegraph,
              training: bool = False) -> tuple[list[tf.Tensor], tf.Tensor, list[tf.Tensor]]:
         """ Process a single GraphObject/GraphTensor element g, returning 3 lists of iteration(s), state(s) and output(s) """
 
-        constant_inputs = [set_mask, output_mask, transposed_adjacency, transposed_arcnode, nodegraph]
+        constant_inputs = [set_mask, output_mask, adjacency, arcnode, nodegraph]
 
         # deep copy of nodes and arcs
         dtype = tf.keras.backend.floatx()
@@ -194,7 +178,7 @@ class LGNN(tf.keras.Model):
             # append new k, new states and new gnn output
             K.append(k)
             states.append(state)
-            outs.append(tf.matmul(nodegraph, out, transpose_a=True) if isinstance(gnn, GNNgraphBased) else out)
+            outs.append(tf.sparse.sparse_dense_matmul(nodegraph, out, adjoint_a=True) if isinstance(gnn, GNNgraphBased) else out)
 
             # update graph with nodes' state and  nodes/arcs' output of the current GNN layer, to feed next GNN layer
             nodes, arcs = self.update_graph(nodes_0, arcs_0, set_mask, output_mask, state, out)

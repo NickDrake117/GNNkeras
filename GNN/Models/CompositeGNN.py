@@ -1,4 +1,6 @@
+# codinf=utf-8
 import tensorflow as tf
+
 
 #######################################################################################################################
 ### CLASS COMPOSITE GNN - NODE BASED ##################################################################################
@@ -93,6 +95,13 @@ class CompositeGNNnodeBased(tf.keras.Model):
 
         return self(net_state=netS, net_output=netO, **config)
 
+    ## SUMMARY METHOD #################################################################################################
+    def summary(self, *args, **kwargs):
+        super().summary(*args, **kwargs)
+        for net in self.net_state + [self.net_output]:
+            print('\n\n')
+            net.summary(*args, **kwargs)
+
     ## COMPILE METHOD #################################################################################################
     def compile(self, *args, average_st_grads=False, **kwargs):
         """ Configures the model for training.
@@ -114,7 +123,6 @@ class CompositeGNNnodeBased(tf.keras.Model):
         k, state, out = self.Loop(*inputs, training=training)
         if training: return k, state, out
         else: return out
-        # return self.Loop(*inputs, training=training)[-1]
 
     # -----------------------------------------------------------------------------------------------------------------
     @staticmethod
@@ -124,14 +132,18 @@ class CompositeGNNnodeBased(tf.keras.Model):
         # get a list from :param inputs: tuple, so as to set elements in list (since a tuple is not settable)
         inputs = list(inputs)
 
+        #for i in inputs: print(type(i))
+
         # squeeze inputs: [2] dim node labels, [4] set mask, [5] output mask to make them 1-dimensional (length,)
-        inputs[2], inputs[4], inputs[5] = [tf.squeeze(inputs[i], axis=-1) for i in [2, 4, 5]]
+        #inputs[2], inputs[4], inputs[5] = [tf.squeeze(inputs[i], axis=-1) for i in [2, 4, 5]]
+        inputs[2:6] = [tf.squeeze(k, axis=-1) for k in inputs[2:6]]
 
-        # initialize sparse tensors -> [6] adjacency (nodes, nodes), [7] composite adjacency list[(nodes, nodes)], [8] arcnode (nodes, arcs)
-        inputs[6] = tf.SparseTensor(inputs[6][0], values=tf.squeeze(inputs[6][1]), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]])
-        inputs[8] = tf.SparseTensor(inputs[8][0], values=tf.squeeze(inputs[8][1]), dense_shape=[inputs[0].shape[0], inputs[1].shape[0]])
-        inputs[7] = [tf.SparseTensor(i, values=tf.squeeze(v, axis=-1), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]]) for i, v in inputs[7]]
-
+        # initialize sparse tensors -> [6] adjacency (nodes, nodes), [7] composite adjacency list[(nodes, nodes)], [8] arcnode (arcs, nodes)
+        #inputs[6] = tf.SparseTensor(inputs[6][0], values=tf.squeeze(inputs[6][1]), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]])
+        #inputs[8] = tf.SparseTensor(inputs[8][0], values=tf.squeeze(inputs[8][1]), dense_shape=[inputs[1].shape[0], inputs[0].shape[0]])
+        #inputs[7] = [tf.SparseTensor(i, values=tf.squeeze(v, axis=-1), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]]) for i, v in inputs[7]]
+        inputs[6]  = [tf.SparseTensor(indices=i, values=tf.squeeze(v, axis=-1), dense_shape=tf.squeeze(s)) for i, v, s in inputs[6]]
+        inputs[7:] = [tf.SparseTensor(k[0], values=tf.squeeze(k[1], axis=-1), dense_shape=tf.squeeze(k[2])) for k in inputs[7:]]
         return inputs
 
     ## LOOP METHODS ###################################################################################################
@@ -156,11 +168,11 @@ class CompositeGNNnodeBased(tf.keras.Model):
         return tf.logical_and(c1, c2)
 
     # -----------------------------------------------------------------------------------------------------------------
-    def convergence(self, k, state, state_old, nodes, dim_node_labels, type_mask, transposed_adjacency, aggregated_component, training) -> tuple:
+    def convergence(self, k, state, state_old, nodes, dim_node_labels, type_mask, adjacency, aggregated_component, training) -> tuple:
         """ Compute new state for the graph's nodes """
 
         # aggregated_states is the aggregation of ONLY neighbors' states.
-        aggregated_states = tf.sparse.sparse_dense_matmul(transposed_adjacency, state)
+        aggregated_states = tf.sparse.sparse_dense_matmul(adjacency, state, adjoint_a=True)
 
         # concatenate the destination node 'old' states to the incoming message, to obtain the input to net_state
         state_new = list()
@@ -175,16 +187,16 @@ class CompositeGNNnodeBased(tf.keras.Model):
         state_new = [tf.scatter_nd(tf.where(m), s, (len(m), s.shape[1])) for m, s in zip(type_mask, state_new)]
         state_new = tf.reduce_sum(state_new, axis=0)
 
-        return k + 1, state_new, state, nodes, dim_node_labels, type_mask, transposed_adjacency, aggregated_component, training
+        return k + 1, state_new, state, nodes, dim_node_labels, type_mask, adjacency, aggregated_component, training
 
     # -----------------------------------------------------------------------------------------------------------------
-    def apply_filters(self, state_converged, nodes, transposed_adjacency, arcs_label, mask) -> tf.Tensor:
+    def apply_filters(self, state_converged, nodes, adjacency, arcs_label, mask) -> tf.Tensor:
         """ Takes only nodes' [states] or [states|labels] for those with output_mask==1 AND belonging to set """
         return tf.boolean_mask(state_converged, mask)
 
     # -----------------------------------------------------------------------------------------------------------------
-    def Loop(self, nodes, arcs, dim_node_labels, type_mask, set_mask, output_mask, transposed_adjacency, transposed_composite_adjacencies,
-             transposed_arcnode, nodegraph, training: bool = False) -> tuple[int, tf.Tensor, tf.Tensor]:
+    def Loop(self, nodes, arcs, dim_node_labels, type_mask, set_mask, output_mask, composite_adjacencies, adjacency,
+            arcnode, nodegraph, training: bool = False) -> tuple[int, tf.Tensor, tf.Tensor]:
         """ Process a single GraphObject/GraphTensor element g, returning iteration, states and output """
 
         # get tensorflow dtype
@@ -192,8 +204,8 @@ class CompositeGNNnodeBased(tf.keras.Model):
 
         # initialize states and iters for convergence loop
         # including aggregated neighbors' label and aggregated incoming arcs' label
-        aggregated_nodes = [tf.sparse.sparse_dense_matmul(a, nodes[:, :d]) for a, d in zip(transposed_composite_adjacencies, dim_node_labels)]
-        aggregated_arcs = tf.sparse.sparse_dense_matmul(transposed_arcnode, arcs[:, 2:])
+        aggregated_nodes = [tf.sparse.sparse_dense_matmul(a, nodes[:, :d], adjoint_a=True) for a, d in zip(composite_adjacencies, dim_node_labels)]
+        aggregated_arcs = tf.sparse.sparse_dense_matmul(arcnode, arcs[:, 2:], adjoint_a=True)
         aggregated_component = tf.concat(aggregated_nodes + [aggregated_arcs], axis=1)
 
         # new values for Loop
@@ -205,12 +217,11 @@ class CompositeGNNnodeBased(tf.keras.Model):
 
         # loop until convergence is reached
         k, state, state_old, *_ = tf.while_loop(self.condition, self.convergence,
-                                                [k, state, state_old, nodes, dim_node_labels, type_mask,
-                                                 transposed_adjacency, aggregated_component, training])
+                                                [k, state, state_old, nodes, dim_node_labels, type_mask, adjacency, aggregated_component, training])
 
         # out_st is the converged state for the filtered nodes, depending on g.set_mask
         mask = tf.logical_and(set_mask, output_mask)
-        input_to_net_output = self.apply_filters(state, nodes, transposed_adjacency, arcs[:, 2:], mask)
+        input_to_net_output = self.apply_filters(state, nodes, adjacency, arcs[:, 2:], mask)
 
         # compute the output of the gnn network
         out = self.net_output(input_to_net_output, training=training)
@@ -257,12 +268,12 @@ class CompositeGNNedgeBased(CompositeGNNnodeBased):
     """ Composite GNN for edge-based problem """
 
     ## LOOP METHODS ###################################################################################################
-    def apply_filters(self, state_converged, nodes, transposed_adjacency, arcs_label, mask) -> tf.Tensor:
+    def apply_filters(self, state_converged, nodes, adjacency, arcs_label, mask) -> tf.Tensor:
         """ Takes only nodes' [states] or [states|labels] for those with output_mask==1 AND belonging to set """
         state_converged = tf.concat([state_converged, nodes], axis=1)
 
         # gather source nodes' and destination nodes' state
-        states = tf.gather(state_converged, transposed_adjacency.indices)
+        states = tf.gather(state_converged, adjacency.indices)
         states = tf.reshape(states, shape=(arcs_label.shape[0], 2 * state_converged.shape[1]))
         states = tf.cast(states, tf.keras.backend.floatx())
 
@@ -283,5 +294,5 @@ class CompositeGNNgraphBased(CompositeGNNnodeBased):
     def Loop(self, *args, training: bool = False) -> tuple[int, tf.Tensor, tf.Tensor]:
         """ Process a single graph, returning iteration, states and output. Output of graph-based problem is the averaged nodes output """
         k, state_nodes, out_nodes = super().Loop(*args, training=training)
-        out_gnn = tf.matmul(args[-1], out_nodes, transpose_a=True)
+        out_gnn = tf.sparse.sparse_dense_matmul(args[-1], out_nodes, adjoint_a=True)
         return k, state_nodes, out_gnn
