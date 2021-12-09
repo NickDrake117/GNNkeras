@@ -96,7 +96,7 @@ epochs      : int = 10
 # set <use_gpu> parameter in this section in order to use gpu during learning procedure.
 # Note that if gpu is not available, use_gpu is set automatically to False.
 
-use_gpu = True
+use_gpu = False
 target_gpu = 0
 
 # set target gpu as the only visible device
