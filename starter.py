@@ -7,7 +7,7 @@ from numpy import random
 
 from GNN import GNN_utils as utils
 from GNN.Models.GNN import GNNnodeBased, GNNedgeBased, GNNgraphBased
-from GNN.Generators.GraphGenerators import MultiGraphGenerator
+from GNN.Sequencers.GraphSequencers import MultiGraphSequencer
 from GNN.Models.LGNN import LGNN
 from GNN.Models.MLP import MLP, get_inout_dims
 from GNN.graph_class import GraphObject
@@ -174,9 +174,9 @@ lgnn.compile(optimizer=optimizer, loss=loss_function, average_st_grads=True, met
 
 ### DATA PROCESSING
 # data generator
-gTr_Generator = MultiGraphGenerator(gTr, problem_based, aggregation_mode)
-gVa_Generator = MultiGraphGenerator(gVa, problem_based, aggregation_mode)
-gTe_Generator = MultiGraphGenerator(gTe, problem_based, aggregation_mode)
+gTr_Sequencer = MultiGraphSequencer(gTr, problem_based, aggregation_mode)
+gVa_Sequencer = MultiGraphSequencer(gVa, problem_based, aggregation_mode)
+gTe_Sequencer = MultiGraphSequencer(gTe, problem_based, aggregation_mode)
 
 ### TRAINING PROCEDURE
 if os.path.exists(path_writer): shutil.rmtree(path_writer)
@@ -192,5 +192,5 @@ early_stopping_lgnn = [tf.keras.callbacks.EarlyStopping(monitor=monitored, resto
 callbacks_lgnn = list(zip(tensorboard_lgnn, early_stopping_lgnn))
 if training_mode != 'serial': callbacks_lgnn = callbacks_lgnn[0]
 
-#gnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator, callbacks=callbacks_gnn)
-# lgnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator, callbacks=callbacks_lgnn)
+#gnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer, callbacks=callbacks_gnn)
+# lgnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer, callbacks=callbacks_lgnn)

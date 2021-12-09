@@ -1,5 +1,4 @@
-#from __future__ import annotations
-
+# codinf=utf-8
 import tensorflow as tf
 
 
@@ -25,7 +24,7 @@ class GNNnodeBased(tf.keras.Model):
         :param threshold: (float) threshold for specifying if convergence is reached or not.
         """
         assert state_vect_dim >= 0
-        assert max_iteration > 0
+        assert max_iteration >= 0
         assert state_threshold >= 0
 
         super().__init__()
@@ -56,7 +55,7 @@ class GNNnodeBased(tf.keras.Model):
         return self.__class__(netS, netO, self.state_vect_dim, self.max_iteration, self.state_threshold)
 
     ## SAVE AND LOAD METHODs ##########################################################################################
-    def save(self, path: str, *args):
+    def save(self, path: str, *args, **kwargs):
         """ Save model to folder <path>, without extra_metrics info """
         from json import dump
 
@@ -64,8 +63,8 @@ class GNNnodeBased(tf.keras.Model):
         if path[-1] != '/': path += '/'
 
         # save net_state and net_output
-        tf.keras.models.save_model(self.net_state, f'{path}net_state/')
-        tf.keras.models.save_model(self.net_output, f'{path}net_output/')
+        tf.keras.models.save_model(self.net_state, f'{path}net_state/', *args, **kwargs)
+        tf.keras.models.save_model(self.net_output, f'{path}net_output/', *args, **kwargs)
 
         # save configuration file in json format
         config = {'state_vect_dim': self.state_vect_dim,
@@ -95,10 +94,11 @@ class GNNnodeBased(tf.keras.Model):
         return self(net_state=netS, net_output=netO, **config)
 
     ## SUMMARY METHOD #################################################################################################
-    def summary(self):
-        self.net_state.summary()
-        print('\n\n')
-        self.net_output.summary()
+    def summary(self, *args, **kwargs):
+        super().summary(*args, **kwargs)
+        for net in [self.net_state, self.net_output]:
+            print('\n\n')
+            net.summary(*args, **kwargs)
 
     ## COMPILE METHOD #################################################################################################
     def compile(self, *args, average_st_grads=False, **kwargs):
@@ -131,12 +131,11 @@ class GNNnodeBased(tf.keras.Model):
         inputs = list(inputs)
 
         # squeeze inputs: [2] set mask, [3] output mask to make them 1-dimensional (length,)
-        inputs[2], inputs[3] = [tf.squeeze(inputs[i], axis=-1) for i in [2, 3]]
+        #inputs[2], inputs[3] = [tf.squeeze(inputs[i], axis=-1) for i in [2, 3]]
+        inputs[2:4] = [tf.squeeze(k, axis=-1) for k in inputs[2:4]]
 
-        # initialize sparse tensors -> [4] adjacency (nodes, nodes), [5] arcnode (nodes, arcs)
-        inputs[4] = tf.SparseTensor(inputs[4][0], values=tf.squeeze(inputs[4][1]), dense_shape=[inputs[0].shape[0], inputs[0].shape[0]])
-        inputs[5] = tf.SparseTensor(inputs[5][0], values=tf.squeeze(inputs[5][1]), dense_shape=[inputs[0].shape[0], inputs[1].shape[0]])
-
+        # initialize sparse tensors -> [4] adjacency (nodes, nodes), [5] arcnode (arcs, nodes)
+        inputs[4:] = [tf.SparseTensor(k[0], values=tf.squeeze(k[1], axis=-1), dense_shape=tf.squeeze(k[2])) for k in inputs[4:]]
         return inputs
 
     ## LOOP METHODS ###################################################################################################
@@ -161,7 +160,7 @@ class GNNnodeBased(tf.keras.Model):
         return tf.logical_and(c1, c2)
 
     # -----------------------------------------------------------------------------------------------------------------
-    def convergence(self, k, state, state_old, nodes, transposed_adjacency, aggregated_nodes, aggregated_arcs, training) -> tuple:
+    def convergence(self, k, state, state_old, nodes, adjacency, aggregated_nodes, aggregated_arcs, training) -> tuple:
         """ Compute new state for the graph's nodes """
 
         # node_components refers to the considered nodes, NOT to the neighbors.
@@ -171,7 +170,7 @@ class GNNnodeBased(tf.keras.Model):
 
         # aggregated_states is the aggregation of ONLY neighbors' states.
         # NOTE: if state_vect_dim != 0, neighbors' label are considered using :param aggregated_nodes: since it is constant
-        aggregated_states = tf.sparse.sparse_dense_matmul(transposed_adjacency, state)
+        aggregated_states = tf.sparse.sparse_dense_matmul(adjacency, state, adjoint_a=True)
 
         # concatenate the destination node 'old' states to the incoming message, to obtain the input to net_state
         inp_state = tf.concat(node_components + [aggregated_states, aggregated_nodes, aggregated_arcs], axis=1)
@@ -179,7 +178,7 @@ class GNNnodeBased(tf.keras.Model):
         # compute new state and update step iteration counter
         state_new = self.net_state(inp_state, training=training)
 
-        return k + 1, state_new, state, nodes, transposed_adjacency, aggregated_nodes, aggregated_arcs, training
+        return k + 1, state_new, state, nodes, adjacency, aggregated_nodes, aggregated_arcs, training
 
     # -----------------------------------------------------------------------------------------------------------------
     def apply_filters(self, state_converged, nodes, adjacency, arcs_label, mask) -> tf.Tensor:
@@ -188,7 +187,7 @@ class GNNnodeBased(tf.keras.Model):
         return tf.boolean_mask(state_converged, mask)
 
     # -----------------------------------------------------------------------------------------------------------------
-    def Loop(self, nodes, arcs, set_mask, output_mask, transposed_adjacency, transposed_arcnode, nodegraph,
+    def Loop(self, nodes, arcs, set_mask, output_mask, adjacency, arcnode, nodegraph,
              training: bool = False) -> tuple[int, tf.Tensor, tf.Tensor]:
         """ Process a single GraphObject/GraphTensor element g, returning iteration, states and output """
 
@@ -197,11 +196,11 @@ class GNNnodeBased(tf.keras.Model):
 
         # initialize states and iters for convergence loop
         # including aggregated neighbors' label and aggregated incoming arcs' label
-        aggregated_arcs = tf.sparse.sparse_dense_matmul(transposed_arcnode, arcs[:, 2:])
+        aggregated_arcs = tf.sparse.sparse_dense_matmul(arcnode, arcs[:, 2:], adjoint_a=True)
         aggregated_nodes = tf.zeros(shape=(nodes.shape[0], 0), dtype=dtype)
         if self.state_vect_dim > 0:
             state = tf.random.normal((nodes.shape[0], self.state_vect_dim), stddev=0.1, dtype=dtype)
-            aggregated_nodes = tf.concat([aggregated_nodes, tf.sparse.sparse_dense_matmul(transposed_adjacency, nodes)], axis=1)
+            aggregated_nodes = tf.concat([aggregated_nodes, tf.sparse.sparse_dense_matmul(adjacency, nodes, adjoint_a=True)], axis=1)
         else:
             state = tf.constant(nodes, dtype=dtype)
         k = tf.constant(0, dtype=dtype)
@@ -210,11 +209,11 @@ class GNNnodeBased(tf.keras.Model):
 
         # loop until convergence is reached
         k, state, state_old, *_ = tf.while_loop(self.condition, self.convergence,
-                                                [k, state, state_old, nodes, transposed_adjacency, aggregated_nodes, aggregated_arcs, training])
+                                                [k, state, state_old, nodes, adjacency, aggregated_nodes, aggregated_arcs, training])
 
         # out_st is the converged state for the filtered nodes, depending on g.set_mask
         mask = tf.logical_and(set_mask, output_mask)
-        input_to_net_output = self.apply_filters(state, nodes, transposed_adjacency, arcs[:, 2:], mask)
+        input_to_net_output = self.apply_filters(state, nodes, adjacency, arcs[:, 2:], mask)
 
         # compute the output of the gnn network
         out = self.net_output(input_to_net_output, training=training)
@@ -261,12 +260,12 @@ class GNNedgeBased(GNNnodeBased):
     """ GNN for edge-based problem """
 
     ## LOOP METHODS ###################################################################################################
-    def apply_filters(self, state_converged, nodes, transposed_adjacency, arcs_label, mask) -> tf.Tensor:
+    def apply_filters(self, state_converged, nodes,  adjacency, arcs_label, mask) -> tf.Tensor:
         """ Takes only nodes' [states] or [states|labels] for those with output_mask==1 AND belonging to set """
         if self.state_vect_dim: state_converged = tf.concat([state_converged, nodes], axis=1)
 
         # gather source nodes' and destination nodes' state
-        states = tf.gather(state_converged, transposed_adjacency.indices)
+        states = tf.gather(state_converged, adjacency.indices)
         states = tf.reshape(states, shape=(arcs_label.shape[0], 2 * state_converged.shape[1]))
         states = tf.cast(states, tf.keras.backend.floatx())
 
@@ -284,8 +283,8 @@ class GNNgraphBased(GNNnodeBased):
     """ GNN for graph-based problem """
 
     ## LOOP METHODS ###################################################################################################
-    def Loop(self, *args, training: bool = False) -> tuple[int, tf.Tensor, tf.Tensor]:
+    def Loop(self, *args, **kwargs) -> tuple[int, tf.Tensor, tf.Tensor]:
         """ Process a single graph, returning iteration, states and output. Output of graph-based problem is the averaged nodes output """
-        k, state_nodes, out_nodes = super().Loop(*args, training=training)
-        out_gnn = tf.matmul(args[-1], out_nodes, transpose_a=True)
+        k, state_nodes, out_nodes = super().Loop(*args, **kwargs)
+        out_gnn = tf.sparse.sparse_dense_matmul(args[-1], out_nodes, adjoint_a=True)
         return k, state_nodes, out_gnn
