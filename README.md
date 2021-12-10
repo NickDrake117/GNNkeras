@@ -31,13 +31,13 @@ Open the script `starter.py` and set parameters in section *SCRIPT OPTIONS* to c
 
 In particular, set `use_MUTAG=True` to get the real-world dataset MUTAG for solving a graph-based problem ([details](https://github.com/NickDrake117/GNN_tf_2.x/blob/main/MUTAG_raw/Mutagenicity_label_readme.txt))
 
-Note that a single layered LGNN behaves exaclty like a GNN, as it is composed of a single GNN.
+Note that a single layered LGNN behaves esactly like a GNN, as it is composed of a single GNN.
 
 ## GraphObject/GraphTensor data type and input data type
 GraphObject and GraphTensors are the data type the models are based on: open `GNN/graph_class.py` for details. 
 GraphObject and GraphTensor are essentially the same object, but they differ in the data type used for their attributes: GraphObject is described by numpy arrays and GraphTensor -- as the name suggests -- by tensorflow tensors.
 The models require the input data to be a tf.keras.utils.Sequence, as specified in `GNN/Sequencers/GraphSequencers.py`, for training/testing purpose.
-
+A Graph Sequencer is a data manager for fitting to a sequence of data – such as a dataset of graphs – which is fed with GraphObjects to generate batches of GraphTensors, whose attributes are presented as input to the givenGNNkeras model.
 
 ## Single model training and testing
 LGNN can be trained in parallel, serial or residual mode. 
@@ -92,6 +92,7 @@ Note that a single layered LGNN behaves exaclty like a GNN, as it is composed of
 Composite GraphObject and Composite GraphTensors are the data type the composite models are based on: open `GNN/composite_graph_class.py` for details. 
 Composite GraphObject and Composite GraphTensor are essentially the same object, but they differ in the data type used for their attributes: Composite GraphObject is described by numpy arrays and Composite GraphTensor -- as the name suggests -- by tensorflow tensors.
 The models require the input data to be a tf.keras.utils.Sequence, as specified in `GNN/Sequencers/GraphSequencers.py`, for training/testing purpose.
+A Graph Sequencer is a data manager for fitting to a sequence of data – such as a dataset of graphs – which is fed with GraphObjects to generate batches of GraphTensors, whose attributes are presented as input to the givenGNNkeras model.
 
 ## Single model training and testing
 Composite LGNN can be trained in parallel, serial or residual mode, as specified in the Homogeneous case. See above for details. 
