@@ -1,4 +1,4 @@
-# GNN & LGNN - Graph Neural Network Keras Models
+# GNN & LGNN - Graph Neural Network Keras-based Models
 This repo contains Tensorflow 2.x keras-based implementations of the following models: 
 - **GNN:** Graph Neural Network for homogeneous graphs;
 - **LGNN:** Layered Graph Neural Network for homogeneous graphs;
