@@ -36,7 +36,7 @@ Note that a single layered LGNN behaves exaclty like a GNN, as it is composed of
 ## GraphObject/GraphTensor data type and input data type
 GraphObject and GraphTensors are the data type the models are based on: open `GNN/graph_class.py` for details. 
 GraphObject and GraphTensor are essentially the same object, but they differ in the data type used for their attributes: GraphObject is described by numpy arrays and GraphTensor -- as the name suggests -- by tensorflow tensors.
-The models require the input data to be a tf.keras.utils.Sequence, as specified in `GNN/GraphGenerator.py`, for training/testing purpose.
+The models require the input data to be a tf.keras.utils.Sequence, as specified in `GNN/Sequencers/GraphSequencers.py`, for training/testing purpose.
 
 
 ## Single model training and testing
@@ -54,22 +54,22 @@ Training mode can be set when calling `LGNN.compile()` method. Default value is 
 To perform models training and testing, run:
     
     # note that gnn and lgnn are already compiled in starter.py. In particular, lgnn is compiled to learn in 'parallel mode'
-    from starter import gnn, lgnn, gTr_Generator, gTe_Generator, gVa_Generator
+    from starter import gnn, lgnn, gTr_Sequencer, gTe_Sequencer, gVa_Sequencer
     
     epochs = 200
     
     # GNN learning procedure
-    gnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator)
+    gnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer)
     
     # GNN evaluation procedure
-    res = gnn.evaluate(gTe_Generator, return_dict=True)
+    res = gnn.evaluate(gTe_Sequencer, return_dict=True)
     
 
     # LGNN learning procedure in parallel mode
-    # lgnnfit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator)
+    # lgnnfit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer)
     
     # LGNN evaluation procedure
-    # res = lgnn.evaluate(gTe_Generator, return_dict=True)
+    # res = lgnn.evaluate(gTe_Sequencer, return_dict=True)
     
 
     # print evaluation result
@@ -91,7 +91,7 @@ Note that a single layered LGNN behaves exaclty like a GNN, as it is composed of
 ## Composite GraphObject/GraphTensor data type and input data type
 Composite GraphObject and Composite GraphTensors are the data type the composite models are based on: open `GNN/composite_graph_class.py` for details. 
 Composite GraphObject and Composite GraphTensor are essentially the same object, but they differ in the data type used for their attributes: Composite GraphObject is described by numpy arrays and Composite GraphTensor -- as the name suggests -- by tensorflow tensors.
-The models require the input data to be a tf.keras.utils.Sequence, as specified in `GNN/GraphGenerator.py`, for training/testing purpose.
+The models require the input data to be a tf.keras.utils.Sequence, as specified in `GNN/Sequencers/GraphSequencers.py`, for training/testing purpose.
 
 ## Single model training and testing
 Composite LGNN can be trained in parallel, serial or residual mode, as specified in the Homogeneous case. See above for details. 
@@ -100,22 +100,22 @@ Composite LGNN can be trained in parallel, serial or residual mode, as specified
 To perform models training and testing, run:
     
     # note that gnn and lgnn are already compiled in starter.py. In particular, lgnn is compiled to learn in 'parallel mode'
-    from starter_composite import gnn, lgnn, gTr_Generator, gTe_Generator, gVa_Generator
+    from starter_composite import gnn, lgnn, gTr_Sequencer, gTe_Sequencer, gVa_Sequencer
     
     epochs = 200
     
     # CGNN learning procedure
-    gnn.fit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator)
+    gnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer)
     
     # CGNN evaluation procedure
-    res = gnn.evaluate(gTe_Generator, return_dict=True)
+    res = gnn.evaluate(gTe_Sequencer, return_dict=True)
     
 
     # CLGNN learning procedure in parallel mode
-    # lgnnfit(gTr_Generator, epochs=epochs, validation_data=gVa_Generator)
+    # lgnnfit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer)
     
     # LGNN evaluation procedure
-    # res = lgnn.evaluate(gTe_Generator, return_dict=True)
+    # res = lgnn.evaluate(gTe_Sequencer, return_dict=True)
     
 
     # print evaluation result
