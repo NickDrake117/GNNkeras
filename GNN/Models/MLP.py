@@ -75,7 +75,7 @@ def MLP(input_dim: int, layers: list[int], activations, kernel_initializer, bias
 
 # ---------------------------------------------------------------------------------------------------------------------
 def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_target: int, problem_based: str, dim_state: int,
-                   hidden_units: Union[None, int, list[int]],
+                   hidden_units: Optional[Union[int, list[int]]] = None,
                    *, layer: int = 0, get_state: bool = False, get_output: bool = False) -> tuple[list[tuple], list[int]]:
     """ Calculate input and output dimension for the MLP of state and output
 

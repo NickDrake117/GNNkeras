@@ -56,7 +56,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
         problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.problem_based]
-        return f"graph_generator(type=multiple {problem}-based', len={len(self)}, " \
+        return f"graph_sequencer(type=multiple {problem}-based', len={len(self)}, " \
                f"aggregation='{self.aggregation_mode}', batch_size={self.batch_size}, shuffle={self.shuffle})"
 
     # -----------------------------------------------------------------------------------------------------------------
@@ -65,16 +65,17 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
-        """ copy method - return a deep copy of the generator """
-        new_gen = self.__class__([i.copy() for i in self.data], self.problem_based, self.aggregation_mode, self.batch_size, False)
-        new_gen.shuffle = self.shuffle
+        """ copy method - return a deep copy of the sequencer """
+        #new_gen = self.__class__([i.copy() for i in self.data], self.problem_based, self.aggregation_mode, self.batch_size, False)
+        #new_gen.shuffle = self.shuffle
+        new_gen = self.__class__([i.copy() for i in self.data], self.problem_based, self.aggregation_mode, self.batch_size, self.shuffle)
         return new_gen
 
     # -----------------------------------------------------------------------------------------------------------------
     def set_batch_size(self, new_batch_size):
         """ modify batch size, then re-create batches """
         self.batch_size = new_batch_size
-        self.on_epoch_end()
+        self.build_batches()
 
     # -----------------------------------------------------------------------------------------------------------------
     def get_batch(self, index):
@@ -84,7 +85,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
 
     # -----------------------------------------------------------------------------------------------------------------
     def build_batches(self):
-        """ create batches from generator data """
+        """ create batches from sequencer data """
         graphs = [self.merge(self.data[i * self.batch_size: (i + 1) * self.batch_size], problem_based=self.problem_based,
                              aggregation_mode=self.aggregation_mode) for i in range(len(self))]
         self.graph_tensors = [self.to_graph_tensor(g) for g in graphs]
@@ -131,12 +132,12 @@ class SingleGraphSequencer(MultiGraphSequencer):
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
         problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.problem_based]
-        return f"graph_generator(type=single {problem}-based, " \
+        return f"graph_sequencer(type=single {problem}-based, " \
                f"len={len(self)}, batch_size={self.batch_size}, shuffle={self.shuffle})"
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
-        """ copy method - return a deep copy of the generator """
+        """ copy method - return a deep copy of the sequencer """
         new_gen = self.__class__(self.data.copy(), self.problem_based, self.batch_size, False)
         new_gen.shuffle = self.shuffle
         return new_gen
@@ -148,7 +149,7 @@ class SingleGraphSequencer(MultiGraphSequencer):
 
     # -----------------------------------------------------------------------------------------------------------------
     def build_batches(self):
-        """ create batches from generator data """
+        """ create batches from sequencer data """
         self.batch_masks = np.zeros((len(self), len(self.data.set_mask)), dtype=bool)
         for i in range(len(self)):
             self.batch_masks[i, self.set_mask_idx[i * self.batch_size: (i + 1) * self.batch_size]] = True
@@ -196,9 +197,7 @@ class CompositeMultiGraphSequencer(MultiGraphSequencer):
 
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
-        problem = {'a': 'arc', 'n': 'node', 'g': 'graph'}[self.problem_based]
-        return f"composite_graph_generator(type=multiple {problem}-based, len={len(self)}, " \
-               f"aggregation={self.aggregation_mode}, batch_size={self.batch_size}, shuffle={self.shuffle})"
+        return f"composite_{super().__repr__()}"
 
 
 #######################################################################################################################
@@ -217,6 +216,4 @@ class CompositeSingleGraphSequencer(SingleGraphSequencer, CompositeMultiGraphSeq
 
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
-        problem = {'a': 'arc', 'n': 'node', 'g': 'graph'}[self.problem_based]
-        return f"composite_graph_generator(type=single {problem}-based, " \
-               f"len={len(self)}, batch_size={self.batch_size}, shuffle={self.shuffle})"
+        return f"composite_{super().__repr__()}"

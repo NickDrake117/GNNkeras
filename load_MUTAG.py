@@ -53,7 +53,6 @@ print('OK')
 graphs = [GraphObject(arcs=e, nodes=n, targets=t[np.newaxis, ...], problem_based='g') for e, n, t in zip(edges, nodes, targs)]
 
 # COMPOSITE GRAPHS
-g = graphs[0]
 composite_graphs = [CompositeGraphObject(arcs=g.arcs, nodes=g.nodes, targets=g.targets, problem_based='g',
-                                         type_mask=np.ones((g.nodes.shape[0], 1), dtype=bool), dim_node_labels=(g.nodes.shape[1],))
+                                         type_mask=np.ones((g.nodes.shape[0], 1), dtype=bool), dim_node_label=(g.nodes.shape[1],))
                     for g in graphs]

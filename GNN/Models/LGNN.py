@@ -244,21 +244,19 @@ class LGNN(tf.keras.Model):
 
             # training data at t==0
             training_data_t0 = input[0]
-            gTr_generator = training_data_t0.copy()
+            training_sequence = training_data_t0.copy()
 
             # validation data at t==0, if provided
-            validation_data, gVa_generator = None, None
-            if 'validation_data' in kwargs:
-                validation_data = kwargs.pop('validation_data')
-                gVa_generator = validation_data.copy()
+            validation_data = kwargs.pop('validation_data', None)
+            validation_sequence = None
+            if validation_data is not None: validation_sequence = validation_data.copy()
 
             ### LEARNING PROCEDURE - each gnn layer is trained separately, one after another
             for idx, gnn in enumerate(self.gnns):
-                print(f'\n\n --- GNN {idx}/{self.LAYERS} ---')
+                print(f'\n\n --- GNN {idx+1}/{self.LAYERS} ---')
 
                 ### TRAINING GNN single layer
-                gnn.fit(gTr_generator.copy(), *input[1:], **kwargs, callbacks=callbacks[idx],
-                        validation_data=gVa_generator.copy() if gVa_generator else None)
+                gnn.fit(training_sequence.copy(), *input[1:], **kwargs, callbacks=callbacks[idx], validation_data=validation_sequence)
 
                 # get processing function to retrieve state and output for the nodes of the graphs processed by the gnn layer.
                 # It's fundamental for graph-based problem, since the output is referred to the entire graph, rather than to the graph nodes.
@@ -266,31 +264,31 @@ class LGNN(tf.keras.Model):
 
                 ### PROCESSING TRAINING DATA
                 # set batch size == 1 to retrieve single graph nodes, arcs, state and outputs, for graph update process between layers
-                gTr_generator.shuffle = False
-                gTr_generator.set_batch_size(1)
+                training_sequence.shuffle = False
+                training_sequence.set_batch_size(1)
 
                 # retrieve iteration, state and output of nodes/arcs for each graph
-                _, sTr, oTr = zip(*[processing_function(*gnn.process_inputs(i[0]), training=True) for i in gTr_generator])
+                _, sTr, oTr = zip(*[processing_function(*gnn.process_inputs(i[0]), training=True) for i in training_sequence])
 
                 # update nodes and arcs attributes for each single graph.
                 # Note that graph.DIM_NODE_LABEL is not updated, as the new graph is computed and processed on the fly
-                gTr_generator = training_data_t0.copy()
-                for g, s, o in zip(gTr_generator.data, sTr, oTr):
+                training_sequence = training_data_t0.copy()
+                for g, s, o in zip(training_sequence.data, sTr, oTr):
                     g.nodes, g.arcs = [i.numpy() for i in self.update_graph(g.nodes, g.arcs, g.set_mask, g.output_mask, s, o)]
 
                 ### PROCESSING VALIDATION DATA if provided, same as the training data
-                if validation_data:
+                if validation_sequence is not None:
                     # set batch size == 1 to retrieve single graph nodes, arcs, state and outputs, for graph update process between layers
-                    gVa_generator.shuffle = False
-                    gVa_generator.set_batch_size(1)
+                    validation_sequence.shuffle = False
+                    validation_sequence.set_batch_size(1)
 
                     # retrieve iteration, state and output of nodes/arcs for each graph
-                    _, sVa, oVa = zip(*[processing_function(*gnn.process_inputs(i[0]), training=True) for i in gVa_generator])
+                    _, sVa, oVa = zip(*[processing_function(*gnn.process_inputs(i[0]), training=True) for i in validation_sequence])
 
                     # update nodes and arcs attributes for each single graph.
                     # Note that graph.DIM_NODE_LABEL is not updated, as the new graph is computed and processed on the fly
-                    gVa_generator = validation_data.copy()
-                    for g, s, o in zip(gVa_generator.data, sVa, oVa):
+                    validation_sequence = validation_data.copy()
+                    for g, s, o in zip(validation_sequence.data, sVa, oVa):
                         g.nodes, g.arcs = [i.numpy() for i in self.update_graph(g.nodes, g.arcs, g.set_mask, g.output_mask, s, o)]
 
         else:

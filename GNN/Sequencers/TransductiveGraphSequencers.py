@@ -9,7 +9,7 @@ from GNN.graph_class import GraphObject
 
 
 #######################################################################################################################
-### CLASS GRAPH GENERATORS FOR MULTIPLE HETEROGENEOUS DATA ### FOR FEEDING THE MODEL DURING LEARNING PROCESS ##########
+### CLASS GRAPH SEQUENCER FOR MULTIPLE HOMOGENEOUS DATA ### FOR FEEDING THE MODEL DURING LEARNING PROCESS #############
 #######################################################################################################################
 class TransductiveMultiGraphSequencer(CompositeMultiGraphSequencer):
     """ Sequencer for dataset composed of multiple Homogeneous Graphs
@@ -68,7 +68,7 @@ class TransductiveMultiGraphSequencer(CompositeMultiGraphSequencer):
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
         problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.problem_based]
-        return f"transductive_graph_generator(multiple {problem}-based, len={len(self)}, " \
+        return f"transductive_graph_sequencer(multiple {problem}-based, len={len(self)}, " \
                f"transductive_rate={self.transductive_rate}, aggregation='{self.aggregation_mode}', " \
                f"batch_size={self.batch_size}, shuffle={self.shuffle})"
 
@@ -80,7 +80,7 @@ class TransductiveMultiGraphSequencer(CompositeMultiGraphSequencer):
 
 
 #######################################################################################################################
-### CLASS GRAPH GENERATORS FOR SINGLE HETEROGENEOUS DATA ### FOR FEEDING THE MODEL DURING LEARNING PROCESS ############
+### CLASS GRAPH SEQUENCER FOR SINGLE HOMOGENEOUS DATA ### FOR FEEDING THE MODEL DURING LEARNING PROCESS ###############
 #######################################################################################################################
 class TransductiveSingleGraphSequencer(TransductiveMultiGraphSequencer, CompositeSingleGraphSequencer):
     """ Sequencer for dataset composed of only one single Homogeneous Graph
@@ -102,13 +102,13 @@ class TransductiveSingleGraphSequencer(TransductiveMultiGraphSequencer, Composit
     # -----------------------------------------------------------------------------------------------------------------
     def __repr__(self):
         problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.problem_based]
-        return f"transductive_graph_generator(type=single {problem}-based, " \
+        return f"transductive_graph_sequencer(type=single {problem}-based, " \
                f"len={len(self)}, transductive_rate={self.transductive_rate}, " \
                f"batch_size={self.batch_size}, shuffle={self.shuffle})"
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
-        """ copy method - return a deep copy of the generator """
+        """ copy method - return a deep copy of the sequencer """
         new_gen = self.__class__(self.data.copy(), self.problem_based, self.trasductive_rate, self.batch_size, False)
         new_gen.shuffle = self.shuffle
         return new_gen

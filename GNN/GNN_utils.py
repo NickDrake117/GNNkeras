@@ -104,15 +104,6 @@ def simple_graph(problem_based: str, aggregation_mode: str = 'average') -> Graph
 
     return GraphObject(arcs=arcs, nodes=nodes, targets=targs, problem_based=problem_based, aggregation_mode=aggregation_mode)
 
-
-# ---------------------------------------------------------------------------------------------------------------------
-def progressbar(percent: float, width: int = 30) -> None:
-    """ Print a progressbar, given a percentage in [0,100] and a fixed length """
-    left = round(width * percent / 100)
-    right = int(width - left)
-    print('\r[', '#' * left, ' ' * right, ']', f' {percent:.1f}%', sep='', end='', flush=True)
-
-
 # ---------------------------------------------------------------------------------------------------------------------
 def getindices(len_dataset: int, perc_Train: float = 0.7, perc_Valid: float = 0.1, seed=None) -> Union[
     tuple[list[int], list[int]], tuple[list[int], list[int], list[int]]]:
@@ -150,8 +141,7 @@ def getindices(len_dataset: int, perc_Train: float = 0.7, perc_Valid: float = 0.
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-def getSet(glist: list[GraphObject], set_indices: list[int], problem_based: str, aggregation_mode: str,
-           verbose: bool = False) -> list[GraphObject]:
+def getSet(glist: list[GraphObject], set_indices: list[int], problem_based: str, aggregation_mode: str) -> list[GraphObject]:
     """ get the Set from a dataset given its set of indices
 
     :param glist: (list of GraphObject or str) dataset from which the set is picked
@@ -168,30 +158,8 @@ def getSet(glist: list[GraphObject], set_indices: list[int], problem_based: str,
     length, setlist = len(set_indices), list()
     for i, elem in enumerate(set_indices):
         setlist.append(glist[elem])
-        if verbose: progressbar((i + 1) * 100 / length)
 
     return [GraphObject.load(i, problem_based=problem_based, aggregation_mode=aggregation_mode) for i in setlist]
-
-
-# ---------------------------------------------------------------------------------------------------------------------
-def getbatches(glist: list[GraphObject], problem_based: str, aggregation_mode: str, batch_size: int = 32, number_of_batches=None,
-               one_graph_per_batch=True) -> Union[list[GraphObject], list[list[GraphObject]]]:
-    """ Divide the Set into batches, in which every batch is a GraphObject or a list of GraphObject
-
-    :param glist: (list of GraphObject) to be split into batches
-    :param batch_size: (int) specify the size of a normal batch. Note: len(batches[-1])<=batch_size
-    :param number of batches: (int) specify in how many batches glist will be partitioned.
-                                > Default value is None; if given, param <batch_size> will be ignored.
-    :param one_graph_per_batch: (bool) if True, all graphs belonging to a batch are merged to form a single GraphObject
-    :return: a list of batches
-    """
-    if number_of_batches is None:
-        batches = [glist[i:i + batch_size] for i in range(0, len(glist), batch_size)]
-    else:
-        batches = [list(i) for i in np.array_split(glist, number_of_batches)]
-    if one_graph_per_batch: batches = [GraphObject.merge(i, problem_based=problem_based, aggregation_mode=aggregation_mode) for i in
-                                       batches]
-    return batches
 
 
 # ---------------------------------------------------------------------------------------------------------------------

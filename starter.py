@@ -39,7 +39,7 @@ aggregation_mode    : str = 'average'
 
 # LEARNING SETS PARAMETERS
 perc_Train      : float = 0.7
-perc_Valid      : float = 0.2
+perc_Valid      : float = 0.1
 batch_size      : int = 32
 normalize       : bool = True
 seed            : Optional[int] = None
@@ -96,7 +96,7 @@ epochs      : int = 10
 # set <use_gpu> parameter in this section in order to use gpu during learning procedure.
 # Note that if gpu is not available, use_gpu is set automatically to False.
 
-use_gpu = False
+use_gpu = True
 target_gpu = 0
 
 # set target gpu as the only visible device
@@ -191,9 +191,9 @@ lgnn.compile(optimizer=optimizer, loss=loss_function, average_st_grads=True, met
 
 ### DATA PROCESSING
 # data generator
-gTr_Sequencer = MultiGraphSequencer(gTr, problem_based, aggregation_mode)
-gVa_Sequencer = MultiGraphSequencer(gVa, problem_based, aggregation_mode)
-gTe_Sequencer = MultiGraphSequencer(gTe, problem_based, aggregation_mode)
+gTr_Sequencer = MultiGraphSequencer(gTr, problem_based, aggregation_mode, batch_size)
+gVa_Sequencer = MultiGraphSequencer(gVa, problem_based, aggregation_mode, batch_size)
+gTe_Sequencer = MultiGraphSequencer(gTe, problem_based, aggregation_mode, batch_size)
 
 ### TRAINING PROCEDURE
 if os.path.exists(path_writer): shutil.rmtree(path_writer)

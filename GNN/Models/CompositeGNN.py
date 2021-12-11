@@ -270,7 +270,6 @@ class CompositeGNNedgeBased(CompositeGNNnodeBased):
     ## LOOP METHODS ###################################################################################################
     def apply_filters(self, state_converged, nodes, adjacency, arcs_label, mask) -> tf.Tensor:
         """ Takes only nodes' [states] or [states|labels] for those with output_mask==1 AND belonging to set """
-        state_converged = tf.concat([state_converged, nodes], axis=1)
 
         # gather source nodes' and destination nodes' state
         states = tf.gather(state_converged, adjacency.indices)
