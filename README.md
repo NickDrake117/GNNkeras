@@ -25,11 +25,9 @@ Download this folder and open a terminal in its location, then use the following
 
 ---------
 ## Homogeneous Setting
-In the following scripts, gnn is a GNN trained by default to solve a binary node-focused classification task on graphs with random nodes/edges/targets, while lgnn is a 5-layered GNN.
+In the following scripts, gnn is a GNN trained by default to solve a binary graph-focused classification task on the real-world graphs dataset MUTAG ([details](https://github.com/NickDrake117/GNN_tf_2.x/blob/main/MUTAG_raw/Mutagenicity_label_readme.txt)), while lgnn is a 5-layered GNN.
 
 Open the script `starter.py` and set parameters in section *SCRIPT OPTIONS* to change dataset and/or GNN/LGNN models architectures and learning behaviour.
-
-In particular, set `use_MUTAG=True` to get the real-world dataset MUTAG for solving a graph-based problem ([details](https://github.com/NickDrake117/GNN_tf_2.x/blob/main/MUTAG_raw/Mutagenicity_label_readme.txt))
 
 Note that a single layered LGNN behaves esactly like a GNN, as it is composed of a single GNN.
 
@@ -66,7 +64,7 @@ To perform models training and testing, run:
     
 
     # LGNN learning procedure in parallel mode
-    # lgnnfit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer)
+    # lgnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer)
     
     # LGNN evaluation procedure
     # res = lgnn.evaluate(gTe_Sequencer, return_dict=True)
@@ -80,13 +78,13 @@ To perform models training and testing, run:
     
 ---------
 ## Heterogeneous Setting
-In the following scripts, gnn is a GNN trained by default to solve a binary node-focused classification task on graphs with random nodes/edges/targets, while lgnn is a 5-layered GNN.
+In the following scripts, gnn is a GNN trained by default to solve a binary graph-focused classification task on the real-world graphs dataset MUTAG ([details](https://github.com/NickDrake117/GNN_tf_2.x/blob/main/MUTAG_raw/Mutagenicity_label_readme.txt)), while lgnn is a 5-layered GNN.
 
 Open the script `starter_composite.py` and set parameters in section *SCRIPT OPTIONS* to change dataset and/or GNN/LGNN models architectures and learning behaviour.
 
-In particular, set `use_MUTAG=True` to get the real-world dataset MUTAG for solving a graph-based problem ([details](https://github.com/NickDrake117/GNN_tf_2.x/blob/main/MUTAG_raw/Mutagenicity_label_readme.txt))
+Note that a single layered LGNN behaves esactly like a GNN, as it is composed of a single GNN.
 
-Note that a single layered LGNN behaves exaclty like a GNN, as it is composed of a single GNN.
+!(figures/encoding_and_unfolding_network.png)
 
 ## Composite GraphObject/GraphTensor data type and input data type
 Composite GraphObject and Composite GraphTensors are the data type the composite models are based on: open `GNN/composite_graph_class.py` for details. 
