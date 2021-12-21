@@ -84,13 +84,18 @@ Open the script `starter_composite.py` and set parameters in section *SCRIPT OPT
 
 Note that a single layered LGNN behaves esactly like a GNN, as it is composed of a single GNN.
 
-!(figures/encoding_and_unfolding_network.png)
+![](figures/encoding_and_unfolding_network.png)
+As shown in the figure, the Composite GNN model replicates the topology of the input graph using two MLPs as building blocks and creating a so-called **encoding network**. The model unfolds itself in time and space, by replicating the same MLP architectures on nodes and by iterating until the converegence or a maximum number of iteration are reached. In the resulting feedforward network, called **unfolding network**, each layer corresponds to an instant in time and contains a copy of all the elements of the encoding network, on which the connections between the various layers also depend. In the figure
+
 
 ## Composite GraphObject/GraphTensor data type and input data type
 Composite GraphObject and Composite GraphTensors are the data type the composite models are based on: open `GNN/composite_graph_class.py` for details. 
 Composite GraphObject and Composite GraphTensor are essentially the same object, but they differ in the data type used for their attributes: Composite GraphObject is described by numpy arrays and Composite GraphTensor -- as the name suggests -- by tensorflow tensors.
 The models require the input data to be a tf.keras.utils.Sequence, as specified in `GNN/Sequencers/GraphSequencers.py`, for training/testing purpose.
 A Graph Sequencer is a data manager for fitting to a sequence of data – such as a dataset of graphs – which is fed with GraphObjects to generate batches of GraphTensors, whose attributes are presented as input to the givenGNNkeras model.
+
+## Operating scheme for a CGNN model
+![](figures/CompositeGNN_scheme.png)
 
 ## Single model training and testing
 Composite LGNN can be trained in parallel, serial or residual mode, as specified in the Homogeneous case. See above for details. 
@@ -124,25 +129,6 @@ To perform models training and testing, run:
 ***NOTE** uncomment lgnn lines to train and test lgnn model in parallel mode. Set 'training_mode' argument to change learning behaviour*
 
 ## Citing
-### Implementation
-To cite the GNN/LGNN implementations please use the following publication:
-
-    Pancino, N., Rossi, A., Ciano, G., Giacomini, G., Bonechi, S., Andreini, P., Scarselli, F., Bianchini, M., Bongini, P. (2020),
-    "Graph Neural Networks for the Prediction of Protein–Protein Interfaces",
-    In ESANN 2020 proceedings (pp.127-132).
-    
-Bibtex:
-
-    @inproceedings{Pancino2020PPI,
-      title={Graph Neural Networks for the Prediction of Protein–Protein Interfaces},
-      author={Niccolò Pancino, Alberto Rossi, Giorgio Ciano, Giorgia Giacomini, Simone Bonechi, Paolo Andreini, Franco Scarselli, Monica Bianchini, Pietro Bongini},
-      booktitle={28th European Symposium on Artificial Neural Networks, Computational Intelligence and Machine Learning (online event)},
-      pages={127-132},
-      year={2020}
-    }
-
-
----------
 ### GNN original paper
 To cite GNN please use the following publication:
 
