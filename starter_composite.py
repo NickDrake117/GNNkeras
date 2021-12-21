@@ -54,17 +54,16 @@ optimizer       : tf.keras.optimizers = tf.optimizers.Adam(learning_rate=0.001)
 # problem is set automatically to graph-based one -> problem_based='g'
 # then aggregation_mode is set for each graph, since they are initialized with aggregation_mode = 'average',
 # but one can choose between 'average', 'sum', 'normalized'.
-#from load_MUTAG import composite_graphs as graphs
-#for g in graphs: g.setAggregation(aggregation_mode)
-from GNN.composite_graph_class import CompositeGraphObject
-graphs = CompositeGraphObject.load_dataset('Bongio', 'g', 'composite_average')
+from load_MUTAG import composite_graphs as graphs
+for g in graphs: g.setAggregation(aggregation_mode)
+
 
 ### PREPROCESSING
 # SPLITTING DATASET in Train, Validation and Test set, no graph normalization is applied
 random.shuffle(graphs)
-gTr = graphs[:3]#-1500]
-gTe = graphs[3:6]#-1500:-750]
-gVa = graphs[6:]#-750:]
+gTr = graphs[:-1500]
+gTe = graphs[-1500:-750]
+gVa = graphs[-750:]
 gGen = gTr[0].copy()
 
 ### MODELS
