@@ -35,10 +35,10 @@ max_iter        : int = 5
 state_threshold : float = 0.01
 
 # LGNN PARAMETERS
-layers          : int = 3
-get_state       : bool = 1
-get_output      : bool = 0
-training_mode   : str = 'residual'
+layers          : int = 5
+get_state       : bool = True
+get_output      : bool = True
+training_mode   : str = 'parallel'
 
 # LEARNING PARAMETERS
 epochs          : int = 10

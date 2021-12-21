@@ -29,21 +29,21 @@ kernel_init_net_output  : str = 'glorot_normal'
 bias_init_net_output    : str = 'glorot_normal'
 
 # GNN PARAMETERS
-dim_state       : int = 8
+dim_state       : int = 10
 max_iter        : int = 5
 state_threshold : float = 0.01
 
 # LGNN PARAMETERS
-layers          : int = 3
-get_state       : bool = 1
-get_output      : bool = 0
-training_mode   : str = 'residual'
+layers          : int = 5
+get_state       : bool = True
+get_output      : bool = True
+training_mode   : str = 'parallel'
 
 # LEARNING PARAMETERS
 epochs          : int = 5
 batch_size      : int = 500
 loss_function   : tf.keras.losses = tf.keras.losses.categorical_crossentropy
-optimizer       : tf.keras.optimizers = tf.optimizers.Adam(learning_rate=0.001)
+optimizer       : tf.keras.optimizers = tf.optimizers.Adam(learning_rate=0.01)
 
 
 #######################################################################################################################
