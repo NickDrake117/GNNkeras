@@ -34,7 +34,7 @@ Note that a single layered LGNN behaves esactly like a GNN, as it is composed of
 ![](figures/encoding_and_unfolding_network_homogeneous.png)
 As shown in the figure, the GNN model replicates the topology of the input graph using two MLPs as building blocks and creating a so-called encoding network. 
 One MLP implements a state transition function on each node and the other implements an output function where it is needed.
-The model unfolds itself in time and space, by replicating the same MLP architectures on nodes and by iterating until the converegence or a maximum number of iteration are reached. In the resulting feedforward network, called unfolding network, each layer corresponds to an instant in time and contains a copy of all the elements of the encoding network, on which the connections between the various layers also depend. In the figure
+The model unfolds itself in time and space, by replicating the same MLP architectures on nodes and by iterating until the converegence or a maximum number of iteration are reached. In the resulting feedforward network, called unfolding network, each layer corresponds to an instant in time and contains a copy of all the elements of the encoding network, on which the connections between the various layers also depend. In the figure, one homogeneous graph with therefore a unique type of nodes, in light green.
 
 ## GraphObject/GraphTensor data type and input data type
 GraphObject and GraphTensors are the data type the models are based on: open `GNN/graph_class.py` for details. 
@@ -94,7 +94,7 @@ Open the script `starter_composite.py` and set parameters in section *SCRIPT OPT
 Note that a single layered LGNN behaves esactly like a GNN, as it is composed of a single GNN.
 
 ![](figures/encoding_and_unfolding_network.png)
-As shown in the figure, the Composite GNN model replicates the topology of the input graph using N+1 MLPs as building blocks and creating a so-called **encoding network**. N MLPs (1 for each node type) implement a state transition function on each node and 1 implements an output function where it is needed. The model unfolds itself in time and space, by replicating the same MLP architectures on nodes and by iterating until the converegence or a maximum number of iteration are reached. In the resulting feedforward network, called **unfolding network**, each layer corresponds to an instant in time and contains a copy of all the elements of the encoding network, on which the connections between the various layers also depend. In the figure
+As shown in the figure, the Composite GNN model replicates the topology of the input heterogeneous graph using N+1 MLPs as building blocks and creating a so-called **encoding network**. N MLPs (1 for each node type) implement a state transition function on each node and 1 implements an output function where it is needed. The model unfolds itself in time and space, by replicating the same MLP architectures on nodes and by iterating until the converegence or a maximum number of iteration are reached. In the resulting feedforward network, called **unfolding network**, each layer corresponds to an instant in time and contains a copy of all the elements of the encoding network, on which the connections between the various layers also depend. In the figure, a composite graph with two type of nodes, green and red.
 
 
 ## Composite GraphObject/GraphTensor data type and input data type
