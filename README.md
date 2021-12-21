@@ -51,7 +51,8 @@ Training mode can be set when calling `LGNN.compile()` method. Default value is 
 
 To perform models training and testing, run:
     
-    # note that gnn and lgnn are already compiled in starter.py. In particular, lgnn is compiled to learn in 'parallel mode'
+    # note that gnn and lgnn are already compiled in starter.py. 
+    # In particular, lgnn is compiled to learn in 'parallel mode'
     from starter import gnn, lgnn, gTr_Sequencer, gTe_Sequencer, gVa_Sequencer
     
     epochs = 200
@@ -103,7 +104,8 @@ Composite LGNN can be trained in parallel, serial or residual mode, as specified
 
 To perform models training and testing, run:
     
-    # note that gnn and lgnn are already compiled in starter.py. In particular, lgnn is compiled to learn in 'parallel mode'
+    # note that gnn and lgnn are already compiled in starter.py. 
+    # In particular, lgnn is compiled to learn in 'parallel mode'
     from starter_composite import gnn, lgnn, gTr_Sequencer, gTe_Sequencer, gVa_Sequencer
     
     epochs = 200
