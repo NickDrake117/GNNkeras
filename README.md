@@ -31,11 +31,20 @@ Open the script `starter.py` and set parameters in section *SCRIPT OPTIONS* to c
 
 Note that a single layered LGNN behaves esactly like a GNN, as it is composed of a single GNN.
 
+![](figures/encoding_and_unfolding_network_homogeneous.png)
+As shown in the figure, the GNN model replicates the topology of the input graph using two MLPs as building blocks and creating a so-called encoding network. 
+One MLP implements a state transition function on each node and the other implements an output function where it is needed.
+The model unfolds itself in time and space, by replicating the same MLP architectures on nodes and by iterating until the converegence or a maximum number of iteration are reached. In the resulting feedforward network, called unfolding network, each layer corresponds to an instant in time and contains a copy of all the elements of the encoding network, on which the connections between the various layers also depend. In the figure
+
 ## GraphObject/GraphTensor data type and input data type
 GraphObject and GraphTensors are the data type the models are based on: open `GNN/graph_class.py` for details. 
 GraphObject and GraphTensor are essentially the same object, but they differ in the data type used for their attributes: GraphObject is described by numpy arrays and GraphTensor -- as the name suggests -- by tensorflow tensors.
 The models require the input data to be a tf.keras.utils.Sequence, as specified in `GNN/Sequencers/GraphSequencers.py`, for training/testing purpose.
 A Graph Sequencer is a data manager for fitting to a sequence of data – such as a dataset of graphs – which is fed with GraphObjects to generate batches of GraphTensors, whose attributes are presented as input to the givenGNNkeras model.
+
+
+## Operating scheme for a GNN model
+![](figures/HomoGNN_scheme.png)
 
 ## Single model training and testing
 LGNN can be trained in parallel, serial or residual mode. 
@@ -85,7 +94,7 @@ Open the script `starter_composite.py` and set parameters in section *SCRIPT OPT
 Note that a single layered LGNN behaves esactly like a GNN, as it is composed of a single GNN.
 
 ![](figures/encoding_and_unfolding_network.png)
-As shown in the figure, the Composite GNN model replicates the topology of the input graph using two MLPs as building blocks and creating a so-called **encoding network**. The model unfolds itself in time and space, by replicating the same MLP architectures on nodes and by iterating until the converegence or a maximum number of iteration are reached. In the resulting feedforward network, called **unfolding network**, each layer corresponds to an instant in time and contains a copy of all the elements of the encoding network, on which the connections between the various layers also depend. In the figure
+As shown in the figure, the Composite GNN model replicates the topology of the input graph using N+1 MLPs as building blocks and creating a so-called **encoding network**. N MLPs (1 for each node type) implement a state transition function on each node and 1 implements an output function where it is needed. The model unfolds itself in time and space, by replicating the same MLP architectures on nodes and by iterating until the converegence or a maximum number of iteration are reached. In the resulting feedforward network, called **unfolding network**, each layer corresponds to an instant in time and contains a copy of all the elements of the encoding network, on which the connections between the various layers also depend. In the figure
 
 
 ## Composite GraphObject/GraphTensor data type and input data type
