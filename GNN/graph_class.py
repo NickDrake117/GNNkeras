@@ -15,7 +15,7 @@ class GraphObject:
 
     ## CONSTRUCTORS METHODs ###########################################################################################
     def __init__(self, nodes, arcs, targets,
-                 problem_based: str = 'n',
+                 focus: str = 'n',
                  set_mask=None,
                  output_mask=None,
                  sample_weight=1,
@@ -27,14 +27,14 @@ class GraphObject:
         :param nodes: Ordered Nodes Matrix X where nodes[i, :] = [i-th node Label].
         :param arcs: Ordered Arcs Matrix E where arcs[i, :] = [From ID Node | To ID Node | i-th arc Label].
         :param targets: Targets Matrix T with shape (Num of arcs/node targeted example or 1, dim_target example).
-        :param problem_based: (str) The problem on which graph is used: 'a' arcs-based, 'g' graph-based, 'n' node-based.
+        :param focus: (str) The problem on which graph is used: 'a' arcs-focused, 'g' graph-focused, 'n' node-focused.
         :param set_mask: Array of boolean {0,1} to define arcs/nodes belonging to a set, when dataset == single GraphObject.
         :param output_mask: Array of boolean {0,1} to define the sub-set of arcs/nodes whose target is known.
         :param sample_weight: target sample weight for loss computation. It can be int, float or numpy.array of ints or floats:
             > If int or float, all targets are weighted as sample_weight * ones.
             > If numpy.array, len(sample_weight) and targets.shape[0] must agree.
         :param ArcNode: Sparse matrix of shape (num_of_arcs, num_of_nodes) s.t. A[i,j]=value if arc[i,2]==node[j].
-        :param NodeGraph: Sparse matrix in coo format of shape (nodes.shape[0], {Num graphs or 1}) used only when problem_based=='g'.
+        :param NodeGraph: Sparse matrix in coo format of shape (nodes.shape[0], {Num graphs or 1}) used only when focus=='g'.
         :param aggregation_mode: (str) The aggregation mode for the incoming message based on ArcNode and Adjacency matrices:
             ---> elem(matrix)={0-1};
             > 'average': A'X gives the average of incoming messages, s.t. sum(A[:,i])==1;
@@ -53,12 +53,12 @@ class GraphObject:
         self.DIM_ARC_LABEL = arcs.shape[1] - 2
         self.DIM_TARGET = targets.shape[1]
 
-        # setting the problem type: node, arcs or graph based.
+        # setting the problem type: node, arcs or graph focused.
         lenMask = {'n': nodes.shape[0], 'a': arcs.shape[0], 'g': nodes.shape[0]}
 
         # build set_mask and output mask
         # for a dataset composed of only a single graph, its nodes must be divided into training, test and validation set.
-        self.set_mask = np.ones(lenMask[problem_based], dtype=bool) if set_mask is None else set_mask.astype(bool)
+        self.set_mask = np.ones(lenMask[focus], dtype=bool) if set_mask is None else set_mask.astype(bool)
         self.output_mask = np.ones(len(self.set_mask), dtype=bool) if output_mask is None else output_mask.astype(bool)
 
         # check lengths: output_mask must be as long as set_mask, if passed as parameter to constructor.
@@ -75,8 +75,8 @@ class GraphObject:
         # since each element is set from aggregation mode.
         self.Adjacency = self.buildAdjacency()
 
-        # build node_graph conversion matrix, to transform a node-based output into a graph-based one.
-        self.NodeGraph = self.buildNodeGraph(problem_based) if NodeGraph is None else coo_matrix(NodeGraph, dtype=self.dtype)
+        # build node_graph conversion matrix, to transform a node-focused output into a graph-focused one.
+        self.NodeGraph = self.buildNodeGraph(focus) if NodeGraph is None else coo_matrix(NodeGraph, dtype=self.dtype)
 
     # -----------------------------------------------------------------------------------------------------------------
     def buildAdjacency(self):
@@ -124,16 +124,16 @@ class GraphObject:
         return coo_matrix((values_vector, (row, col)), shape=(self.arcs.shape[0], self.nodes.shape[0]), dtype=self.dtype)
 
     # -----------------------------------------------------------------------------------------------------------------
-    def buildNodeGraph(self, problem_based: str):
-        """ Build Node-Graph Aggregation Matrix, to transform a node-based gnn output in a graph-based one.
+    def buildNodeGraph(self, focus: str):
+        """ Build Node-Graph Aggregation Matrix, to transform a node-focused gnn output in a graph-focused one.
 
-        NodeGraph != empty only if problem_based == 'g': It has dimensions (nodes.shape[0], 1) for a single graph,
+        NodeGraph != empty only if focus == 'g': It has dimensions (nodes.shape[0], 1) for a single graph,
         or (nodes.shape[0], Num graphs) for a graph containing 2+ graphs, built by merging the single graphs into a bigger one,
         such that after the node-graph aggregation process gnn can compute (Num graphs, targets.shape[1]) as output.
 
         :return: non-empty NodeGraph sparse matrix in coo_format:
-        if :param problem_based: is 'g', as NodeGraph is used in graph-based problems. """
-        if problem_based == 'g': data = np.ones((self.nodes.shape[0], 1)) * (1 / self.nodes.shape[0])
+        if :param focus: is 'g', as NodeGraph is used in graph-focused problems. """
+        if focus == 'g': data = np.ones((self.nodes.shape[0], 1)) * (1 / self.nodes.shape[0])
         else: data = np.array([], ndmin=2)
         return coo_matrix(data, dtype=self.dtype)
 
@@ -209,7 +209,7 @@ class GraphObject:
         if not all(self.output_mask): data['output_mask'] = self.output_mask
         if np.any(self.sample_weight != 1): data['sample_weight'] = self.sample_weight
 
-        # NodeGraph is saved only if it is a graph_based problem and g is a merged graph resulting from GraphObject.merge.
+        # NodeGraph is saved only if it is a graph_focused problem and g is a merged graph resulting from GraphObject.merge.
         if (self.NodeGraph.size > 0 and self.NodeGraph.shape[1] > 1):
             data['NodeGraph'] = np.stack([self.NodeGraph.data, self.NodeGraph.row, self.NodeGraph.col]).transpose()
 
@@ -306,11 +306,11 @@ class GraphObject:
 
     ## CLASS METHODs ### LOADER #######################################################################################
     @classmethod
-    def load(cls, graph_npz_path, problem_based, aggregation_mode, **kwargs):
+    def load(cls, graph_npz_path, focus, aggregation_mode, **kwargs):
         """ Load a GraphObject from a npz compressed/uncompressed file.
 
         :param graph_npz_path: path to the npz graph file.
-        :param problem_based: (str) 'n' node-based; 'a' arc-based; 'g' graph-based. See __init__ for details.
+        :param focus: (str) 'n' node-focused; 'a' arc-focused; 'g' graph-focused. See __init__ for details.
         :param aggregation_mode: (str) incoming message aggregation mode. See BuildArcNode for details.
         :param kwargs: kwargs argument of numpy.load function. """
         if '.npz' not in graph_npz_path: graph_npz_path += '.npz'
@@ -320,18 +320,18 @@ class GraphObject:
         nodegraph = data.pop('NodeGraph', None)
         if nodegraph is not None: data['NodeGraph'] = coo_matrix((nodegraph[:, 0], nodegraph[:, 1:].astype(int)))
 
-        return cls(problem_based=problem_based, aggregation_mode=aggregation_mode, **data)
+        return cls(focus=focus, aggregation_mode=aggregation_mode, **data)
 
     # -----------------------------------------------------------------------------------------------------------------
     @classmethod
-    def load_txt(cls, graph_folder_path: str, problem_based: str, aggregation_mode: str, **kwargs):
+    def load_txt(cls, graph_folder_path: str, focus: str, aggregation_mode: str, **kwargs):
         """ Load a graph from a directory which contains at least 3 txt files referring to nodes, arcs and targets.
 
         :param graph_folder_path: directory containing at least 3 files: 'nodes.txt', 'arcs.txt' and 'targets.txt'
             > other possible files: 'NodeGraph.txt', 'output_mask.txt', 'set_mask.txt' and 'sample_weight.txt'.
             No other files required!
-        :param problem_based: (str) 'n' node-based; 'a' arc-based; 'g' graph-based. See __init__ for details.
-            > NOTE  For graph_based problems, file 'NodeGraph.txt' must to be present in folder.
+        :param focus: (str) 'n' node-focused; 'a' arc-focused; 'g' graph-focused. See __init__ for details.
+            > NOTE  For graph-focused problems, file 'NodeGraph.txt' must to be present in folder.
             NodeGraph has shape (nodes, 3) s.t. in coo_matrix NodeGraph[:, 0]==data and NodeGraph[:, 1:]==indices for data.
         :param aggregation_mode: (str) incoming message aggregation mode. See BuildArcNode for details.
         :param kwargs: kwargs argument of numpy.loadtxt function.
@@ -341,8 +341,8 @@ class GraphObject:
         if graph_folder_path[-1] != '/': graph_folder_path += '/'
 
         files = os.listdir(graph_folder_path)
-        keys = [i.rsplit('.')[0] for i in files] + ['problem_based', 'aggregation_mode']
-        vals = [np.loadtxt(graph_folder_path + i, ndmin=2, **kwargs) for i in files] + [problem_based, aggregation_mode]
+        keys = [i.rsplit('.')[0] for i in files] + ['focus', 'aggregation_mode']
+        vals = [np.loadtxt(graph_folder_path + i, ndmin=2, **kwargs) for i in files] + [focus, aggregation_mode]
 
         # create a dictionary with parameters and values to be passed to GraphObject's constructor.
         data = dict(zip(keys, vals))
@@ -355,39 +355,39 @@ class GraphObject:
 
     # -----------------------------------------------------------------------------------------------------------------
     @classmethod
-    def load_dataset(cls, folder, problem_based, aggregation_mode, **kwargs):
+    def load_dataset(cls, folder, focus, aggregation_mode, **kwargs):
         """ Load a dataset of graphs stored in a folder of npz graph files.
         To be used after save_dataset method.
 
         :param folder: path to the folder where npz graph files are stored.
-        :param problem_based: (str) 'n' node-based; 'a' arc-based; 'g' graph-based. See __init__ for details.
+        :param focus: (str) 'n' node-focused; 'a' arc-focused; 'g' graph-focused. See __init__ for details.
         :param aggregation_mode: (str) incoming message aggregation mode. See BuildArcNode for details.
         :param kwargs: kwargs argument of numpy.load function.
         :return: a list of GraphObject elements. """
-        return [cls.load(f"{folder}/{g}", problem_based, aggregation_mode, **kwargs) for g in os.listdir(folder)]
+        return [cls.load(f"{folder}/{g}", focus, aggregation_mode, **kwargs) for g in os.listdir(folder)]
 
     # -----------------------------------------------------------------------------------------------------------------
     @classmethod
-    def load_dataset_txt(cls, folder, problem_based, aggregation_mode, **kwargs):
+    def load_dataset_txt(cls, folder, focus, aggregation_mode, **kwargs):
         """ Load a dataset of graphs stored in a folder of graph folders.
         To be used after save_dataset_txt method.
 
         :param folder: path to the folder where graph folders are stored.
-        :param problem_based: (str) 'n' node-based; 'a' arc-based; 'g' graph-based. See __init__ for details.
-            > NOTE  For graph_based problems, file 'NodeGraph.txt' must to be present in folders.
+        :param focus: (str) 'n' node-focused; 'a' arc-focused; 'g' graph-focused. See __init__ for details.
+            > NOTE  For graph-focused problems, file 'NodeGraph.txt' must to be present in folders.
             NodeGraph has shape (nodes, 3) s.t. in coo_matrix NodeGraph[:, 0]==data and NodeGraph[:, 1:]==indices for data.
         :param aggregation_mode: (str) incoming message aggregation mode. See BuildArcNode for details.
         :param kwargs: kwargs argument of numpy.loadtxt function.
         :return: a list of GraphObject elements. """
-        return [cls.load_txt(f"{folder}/{g}", problem_based, aggregation_mode, **kwargs) for g in os.listdir(folder)]
+        return [cls.load_txt(f"{folder}/{g}", focus, aggregation_mode, **kwargs) for g in os.listdir(folder)]
 
     ## CLASS METHODs ### MERGER #######################################################################################
     @classmethod
-    def merge(cls, glist: list, problem_based: str, aggregation_mode: str, dtype='float32'):
+    def merge(cls, glist: list, focus: str, aggregation_mode: str, dtype='float32'):
         """ Method to merge a list of GraphObject elements in a single GraphObject element.
 
         :param glist: list of GraphObject elements to be merged.
-            > NOTE if problem_based=='g', new NodeGraph will have dimension (Num nodes, Num graphs).
+            > NOTE if focus=='g', new NodeGraph will have dimension (Num nodes, Num graphs).
         :param aggregation_mode: (str) incoming message aggregation mode. See BuildArcNode for details.
         :param dtype: dtype of elements of new arrays after merging procedure.
         :return: a new GraphObject containing all the information (nodes, arcs, targets, ...) in glist. """
@@ -408,23 +408,23 @@ class GraphObject:
         nodegraph = block_diag(nodegraph_list, dtype=dtype)
 
         # resulting GraphObject.
-        return GraphObject(arcs=arcs, nodes=nodes, targets=targets, problem_based=problem_based,
+        return GraphObject(arcs=arcs, nodes=nodes, targets=targets, focus=focus,
                            set_mask=set_mask, output_mask=output_mask, sample_weight=sample_weight,
                            NodeGraph=nodegraph, aggregation_mode=aggregation_mode)
 
     ## CLASS METHODs ### UTILS ########################################################################################
     @classmethod
-    def fromGraphTensor(cls, g, problem_based: str):
+    def fromGraphTensor(cls, g, focus: str):
         """ Create GraphObject from GraphTensor.
 
         :param g: a GraphTensor element to be translated into a GraphObject element.
-        :param problem_based: (str) 'n' node-based; 'a' arc-based; 'g' graph-based. See __init__ for details.
+        :param focus: (str) 'n' node-focused; 'a' arc-focused; 'g' graph-focused. See __init__ for details.
         :return: a GraphObject element whose tensor representation is g.
         """
-        nodegraph = coo_matrix((g.NodeGraph.values, tf.transpose(g.NodeGraph.indices))) if problem_based == 'g' else None
+        nodegraph = coo_matrix((g.NodeGraph.values, tf.transpose(g.NodeGraph.indices))) if focus == 'g' else None
         return cls(arcs=g.arcs.numpy(), nodes=g.nodes.numpy(), targets=g.targets.numpy(),
                    set_mask=g.set_mask.numpy(), output_mask=g.output_mask.numpy(), sample_weight=g.sample_weight.numpy(),
-                   NodeGraph=nodegraph, aggregation_mode=g.aggregation_mode, problem_based=problem_based)
+                   NodeGraph=nodegraph, aggregation_mode=g.aggregation_mode, focus=focus)
 
 
 #######################################################################################################################

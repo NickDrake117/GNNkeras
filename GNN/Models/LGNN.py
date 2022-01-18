@@ -9,7 +9,7 @@ from GNN.Models.GNN import GNNnodeBased, GNNarcBased, GNNgraphBased
 ### CLASS LGNN - GENERAL ##############################################################################################
 #######################################################################################################################
 class LGNN(tf.keras.Model):
-    """ Layered Graph Neural Network (LGNN) model for node-based, arc-based or graph-based applications. """
+    """ Layered Graph Neural Network (LGNN) model for node-focused, arc-focused or graph-focused applications. """
 
     ## CONSTRUCTORS METHODs ###########################################################################################
     def __init__(self,
@@ -220,7 +220,7 @@ class LGNN(tf.keras.Model):
         constant_inputs = [set_mask, output_mask, adjacency, arcnode, nodegraph]
 
         # get processing function to retrieve state and output for the nodes of the graphs processed by the gnn layer.
-        # Fundamental for graph-based problem, since the output is referred to the entire graph, rather than to the graph nodes.
+        # Fundamental for graph-focused problem, since the output is referred to the entire graph, rather than to the graph nodes.
         # Since in CONSTRUCTOR GNNs type must be only one, type(self.gnns[0]) is exploited and processing function is the same overall GNNs layers.
         processing_function = self.__gnnClassLoader__("arc").Loop if self.gnns[0].name == "arc" else self.__gnnClassLoader__("node").Loop
 
@@ -293,7 +293,7 @@ class LGNN(tf.keras.Model):
             ### in serial mode, :param callbacks: must be a list of list/tuple of callbacksObject, s.t. len(callbacks) == self.LAYERS
 
             # get processing function to retrieve state and output for the nodes of the graphs processed by the gnn layer.
-            # Fundamental for graph-based problem, since the output is referred to the entire graph, rather than to the graph nodes.
+            # Fundamental for graph-focused problem, since the output is referred to the entire graph, rather than to the graph nodes.
             # Since in CONSTRUCTOR GNNs type must be only one, type(self.gnns[0]) is exploited and processing function is the same overall GNNs layers
             processing_function = self.__gnnClassLoader__("arc").Loop if self.gnns[0].name == "arc" else self.__gnnClassLoader__("node").Loop
 

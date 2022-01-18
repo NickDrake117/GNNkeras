@@ -17,7 +17,7 @@ class TransductiveMultiGraphSequencer(CompositeMultiGraphSequencer):
     ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
                  graphs: list[GraphObject],
-                 problem_based: str,
+                 focus: str,
                  aggregation_mode: str,
                  transductive_rate: float = 0.5,
                  batch_size: int = 32,
@@ -25,7 +25,7 @@ class TransductiveMultiGraphSequencer(CompositeMultiGraphSequencer):
         """ CONSTRUCTOR
 
         :param graphs: a list of GraphObject elements to be sequenced.
-        :param problem_based: (str) 'a' arcs-based, 'g' graph-based, 'n' node-based. See GraphObject.merge for details.
+        :param focus: (str) 'a' arcs-focused, 'g' graph-focused, 'n' node-focused. See GraphObject.merge for details.
         :param aggregation_mode: (str) incoming message aggregation mode: 'sum', 'average', 'normalized'. See GraphObject.merge for details.
         :param transductive_rate: (float) targeted nodes' rate to be considered as transductive nodes.
         :param batch_size: (int) batch size for merging graphs data.
@@ -33,8 +33,8 @@ class TransductiveMultiGraphSequencer(CompositeMultiGraphSequencer):
         self.graph_objects = graphs
         self.transductive_rate = transductive_rate
 
-        gs = [self.get_transduction(g, transductive_rate, problem_based, tf.keras.backend.floatx()) for g in graphs]
-        super().__init__(gs, problem_based, aggregation_mode,batch_size, shuffle)
+        gs = [self.get_transduction(g, transductive_rate, focus, tf.keras.backend.floatx()) for g in graphs]
+        super().__init__(gs, focus, aggregation_mode,batch_size, shuffle)
 
     ## CONFIG METHODs #################################################################################################
     def get_config(self):
@@ -47,20 +47,20 @@ class TransductiveMultiGraphSequencer(CompositeMultiGraphSequencer):
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):
         """ Representation string for the instance of GraphSequencer. """
-        problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.problem_based]
-        return f"transductive_graph_sequencer(multiple {problem}-based, len={len(self)}, " \
+        problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.focus]
+        return f"transductive_graph_sequencer(multiple {problem}-focused, len={len(self)}, " \
                f"transductive_rate={self.transductive_rate}, aggregation='{self.aggregation_mode}', " \
                f"batch_size={self.batch_size}, shuffle={self.shuffle})"
 
     ## IMPLEMENTED ABSTRACT METHODs ###################################################################################
     def on_epoch_end(self):
         """ Update transductive data after each epoch. Rebuild batches if data is shuffled. """
-        self.data = [self.get_transduction(g, self.transductive_rate, self.problem_based, self.dtype) for g in self.graph_objects]
+        self.data = [self.get_transduction(g, self.transductive_rate, self.focus, self.dtype) for g in self.graph_objects]
         super().on_epoch_end()
 
     ## STATIC METHODS #################################################################################################
     @staticmethod
-    def get_transduction(g: GraphObject, transductive_rate: float, problem_based: str, dtype):
+    def get_transduction(g: GraphObject, transductive_rate: float, focus: str, dtype):
         """ get the transductive version of :param g: -> an heterogeneous graph with non-transductive/transductive nodes. """
         transductive_node_mask = np.logical_and(g.set_mask, g.output_mask)
 
@@ -73,7 +73,7 @@ class TransductiveMultiGraphSequencer(CompositeMultiGraphSequencer):
         transductive_target_mask = transductive_node_mask[g.output_mask]
 
         # new nodes/arcs label.
-        length = g.arcs.shape[0] if problem_based == 'a' else g.nodes.shape[0]
+        length = g.arcs.shape[0] if focus == 'a' else g.nodes.shape[0]
         labelplus = np.zeros((length, g.DIM_TARGET), dtype=dtype)
         labelplus[transductive_node_mask] = g.targets[transductive_target_mask]
 
@@ -91,7 +91,7 @@ class TransductiveMultiGraphSequencer(CompositeMultiGraphSequencer):
         output_mask_new[transductive_node_mask] = False
 
         return CompositeGraphObject(arcs=g.getArcs(), nodes=nodes_new, targets=target_new, type_mask=type_mask,
-                                    dim_node_label=dim_node_label_new, problem_based=problem_based,
+                                    dim_node_label=dim_node_label_new, focus=focus,
                                     set_mask=g.getSetMask(), output_mask=output_mask_new)
 
 #######################################################################################################################
@@ -104,28 +104,28 @@ class TransductiveSingleGraphSequencer(TransductiveMultiGraphSequencer, Composit
     ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
                  graph: GraphObject,
-                 problem_based: str,
+                 focus: str,
                  transductive_rate: float = 0.5,
                  batch_size: int = 32,
                  shuffle: bool = True):
         """ CONSTRUCTOR
         :param graph: a single GraphObject element to be sequenced.
-        :param problem_based: (str) 'a' arcs-based, 'g' graph-based, 'n' node-based. See GraphObject.__init__ for details.
+        :param focus: (str) 'a' arcs-focused, 'g' graph-focused, 'n' node-focused. See GraphObject.__init__ for details.
         :param transductive_rate: (float) targeted nodes' rate to be considered as transductive nodes.
         :param batch_size: (int) batch size for set_mask_idx values.
         :param shuffle: (bool) if True, at the end of the epoch, set_mask_idx is shuffled. No shuffling is performed otherwise. """
         self.graph_object = graph
         self.transductive_rate = transductive_rate
 
-        g = self.get_transduction(graph, transductive_rate, problem_based, tf.keras.backend.floatx())
-        CompositeSingleGraphSequencer.__init__(self, g, problem_based, batch_size, shuffle)
+        g = self.get_transduction(graph, transductive_rate, focus, tf.keras.backend.floatx())
+        CompositeSingleGraphSequencer.__init__(self, g, focus, batch_size, shuffle)
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
         """ COPY METHOD
 
         :return: a Deep Copy of the GraphSequencer instance. """
-        new_gen = self.__class__(self.data.copy(), self.problem_based, self.trasductive_rate, self.batch_size, False)
+        new_gen = self.__class__(self.data.copy(), self.focus, self.trasductive_rate, self.batch_size, False)
         new_gen.shuffle = self.shuffle
         return new_gen
 
@@ -140,14 +140,14 @@ class TransductiveSingleGraphSequencer(TransductiveMultiGraphSequencer, Composit
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):
         """ Representation string for the instance of GraphSequencer. """
-        problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.problem_based]
-        return f"transductive_graph_sequencer(type=single {problem}-based, " \
+        problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.focus]
+        return f"transductive_graph_sequencer(type=single {problem}-focused, " \
                f"len={len(self)}, transductive_rate={self.transductive_rate}, " \
                f"batch_size={self.batch_size}, shuffle={self.shuffle})"
 
     ## IMPLEMENTED ABSTRACT METHODs ###################################################################################
     def on_epoch_end(self):
         """ Update transductive and set_mask indices after each epoch. Rebuild batches if set_mask indices are shuffled. """
-        g = self.get_transduction(self.graph_object, self.transductive_rate, self.problem_based, self.dtype)
+        g = self.get_transduction(self.graph_object, self.transductive_rate, self.focus, self.dtype)
         self.graph_tensor = self.to_graph_tensor(g)
         CompositeSingleGraphSequencer.on_epoch_end(self)

@@ -10,7 +10,7 @@ from GNN.Models.CompositeGNN import CompositeGNNnodeBased as GNNnodeBased, \
 ### CLASS LGNN - GENERAL ##############################################################################################
 #######################################################################################################################
 class CompositeLGNN(LGNN):
-    """ Composite Layered Graph Neural Network (CLGNN) model for node-based, arc-based or graph-based applications. """
+    """ Composite Layered Graph Neural Network (CLGNN) model for node-focused, arc-focused or graph-focused applications. """
 
     ## REPR METHODs ###################################################################################################
     def __repr__(self):
@@ -28,7 +28,7 @@ class CompositeLGNN(LGNN):
         constant_inputs = [type_mask, set_mask, output_mask, composite_adjacencies, adjacency, arcnode, nodegraph]
 
         # get processing function to retrieve state and output for the nodes of the graphs processed by the gnn layer.
-        # Fundamental for graph-based problem, since the output is referred to the entire graph, rather than to the graph nodes.
+        # Fundamental for graph-focused problem, since the output is referred to the entire graph, rather than to the graph nodes.
         # Since in CONSTRUCTOR GNNs type must be only one, type(self.gnns[0]) is exploited and processing function is the same overall GNNs layers.
         processing_function = self.__gnnClassLoader__("arc").Loop if self.gnns[0].name == "arc" else self.__gnnClassLoader__("node").Loop
 

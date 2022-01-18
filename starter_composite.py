@@ -16,8 +16,8 @@ from GNN.Sequencers.GraphSequencers import CompositeMultiGraphSequencer
 aggregation_mode = 'average'
 # c: Classification
 addressed_problem = 'c'
-# g: graph-based
-problem_based = 'g'
+# g: graph-focused
+focus = 'g'
 
 # NET STATE PARAMETERS
 activations_net_state   : str = 'selu'
@@ -51,7 +51,7 @@ optimizer       : tf.keras.optimizers = tf.optimizers.Adam(learning_rate=0.01)
 #######################################################################################################################
 
 ### LOAD DATASET from MUTAG
-# problem is set automatically to graph-based one -> problem_based='g'
+# problem is set automatically to graph-focused one -> focus='g'
 # then aggregation_mode is set for each graph, since they are initialized with aggregation_mode = 'average',
 # but one can choose between 'average', 'sum', 'normalized'.
 from load_MUTAG import composite_graphs as graphs
@@ -70,7 +70,7 @@ gGen = gTr[0].copy()
 # NETS - STATE
 input_net_st, layers_net_st = zip(*[get_inout_dims(net_name='state', dim_node_label=gGen.DIM_NODE_LABEL,
                                                    dim_arc_label=gGen.DIM_ARC_LABEL, dim_target=gGen.DIM_TARGET,
-                                                   problem_based=problem_based, dim_state=dim_state,
+                                                   focus=focus, dim_state=dim_state,
                                                    layer=i, get_state=get_state, get_output=get_output) for i in range(layers)])
 nets_St = [[MLP(input_dim=s, layers=j,
                 activations=activations_net_state,
@@ -95,9 +95,9 @@ lgnn.compile(optimizer=optimizer, loss=loss_function, average_st_grads=True, met
              training_mode=training_mode)
 
 ### DATA PROCESSING
-gTr_Sequencer = CompositeMultiGraphSequencer(gTr, problem_based, aggregation_mode, batch_size)
-gVa_Sequencer = CompositeMultiGraphSequencer(gVa, problem_based, aggregation_mode, batch_size)
-gTe_Sequencer = CompositeMultiGraphSequencer(gTe, problem_based, aggregation_mode, batch_size)
+gTr_Sequencer = CompositeMultiGraphSequencer(gTr, focus, aggregation_mode, batch_size)
+gVa_Sequencer = CompositeMultiGraphSequencer(gVa, focus, aggregation_mode, batch_size)
+gTe_Sequencer = CompositeMultiGraphSequencer(gTe, focus, aggregation_mode, batch_size)
 
 ### LEARNING PROCEDURE
 # gnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer)

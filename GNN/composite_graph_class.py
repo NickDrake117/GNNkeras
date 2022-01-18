@@ -23,14 +23,14 @@ class CompositeGraphObject(GraphObject):
         :param targets: Targets Matrix T with shape (Num of arcs/node targeted example or 1, dim_target example).
         :param type_mask: boolean np.array with shape (Num of nodes, Num of node's types). type_mask[:,i] refers to dim_node_label[i].
         :param dim_node_label: (list/tuple) with len == Num of node's types. i-th element defines label dimension of nodes of type i.
-        :param problem_based: (str) The problem on which graph is used: 'a' arcs-based, 'g' graph-based, 'n' node-based.
+        :param focus: (str) The problem on which graph is used: 'a' arcs-focused, 'g' graph-focused, 'n' node-focused.
         :param set_mask: Array of boolean {0,1} to define arcs/nodes belonging to a set, when dataset == single GraphObject.
         :param output_mask: Array of boolean {0,1} to define the sub-set of arcs/nodes whose target is known.
         :param sample_weight: target sample weight for loss computation. It can be int, float or numpy.array of ints or floats:
             > If int or float, all targets are weighted as sample_weight * ones.
             > If numpy.array, len(sample_weight) and targets.shape[0] must agree.
         :param ArcNode: Sparse matrix of shape (num_of_arcs, num_of_nodes) s.t. A[i,j]=value if arc[i,2]==node[j].
-        :param NodeGraph: Sparse matrix in coo format of shape (nodes.shape[0], {Num graphs or 1}) used only when problem_based=='g'.
+        :param NodeGraph: Sparse matrix in coo format of shape (nodes.shape[0], {Num graphs or 1}) used only when focus=='g'.
         :param aggregation_mode: (str) The aggregation mode for the incoming message based on ArcNode and Adjacency matrices:
             ---> elem(matrix)={0-1};
             > 'average': A'X gives the average of incoming messages, s.t. sum(A[:,i])==1;
@@ -85,7 +85,7 @@ class CompositeGraphObject(GraphObject):
         if aggregation_mode in ['normalized', 'average', 'sum']:
             matrix = super().buildArcNode(aggregation_mode)
 
-        # composite average node aggregation - incoming message as sum of averaged type-based neighbors state,
+        # composite average node aggregation - incoming message as sum of averaged type-focused neighbors state,
         # e.g. if a node i has 3 neighbors (2 of them belonging to a type k1, the other to a type k2):
         # the message coming from k1's nodes is divided by 2,
         # while the message coming from k2's node is taken as is, being that the only one neighbor belonging to k2.
@@ -139,17 +139,17 @@ class CompositeGraphObject(GraphObject):
 
     ## CLASS METHODs ### MERGER #######################################################################################
     @classmethod
-    def merge(cls, glist, problem_based: str, aggregation_mode: str, dtype='float32'):
+    def merge(cls, glist, focus: str, aggregation_mode: str, dtype='float32'):
         """ Method to merge a list of CompositeGraphObject elements in a single GraphObject element.
 
         :param glist: list of CompositeGraphObject elements to be merged.
-            > NOTE if problem_based=='g', new NodeGraph will have dimension (Num nodes, Num graphs).
+            > NOTE if focus=='g', new NodeGraph will have dimension (Num nodes, Num graphs).
         :param aggregation_mode: (str) incoming message aggregation mode. See BuildArcNode for details.
         :param dtype: dtype of elements of new arrays after merging procedure.
         :return: a new CompositeGraphObject containing all the information (nodes, arcs, targets, ...) in glist. """
 
         # get new GraphObject, then convert to CompositeGraphObject.
-        g = super().merge(glist, problem_based, 'sum', dtype)
+        g = super().merge(glist, focus, 'sum', dtype)
 
         dim_node_label, type_mask = zip(*[(i.DIM_NODE_LABEL, i.getTypeMask()) for i in glist])
 
@@ -162,24 +162,24 @@ class CompositeGraphObject(GraphObject):
 
         # resulting CompositeGraphObject.
         return CompositeGraphObject(arcs=g.arcs, nodes=g.nodes, targets=g.targets, type_mask=type_mask,
-                                    dim_node_label=dim_node_label.pop(), problem_based=problem_based,
+                                    dim_node_label=dim_node_label.pop(), focus=focus,
                                     set_mask=g.set_mask, output_mask=g.output_mask, sample_weight=g.sample_weight,
                                     NodeGraph=g.NodeGraph, aggregation_mode=aggregation_mode)
 
     ## CLASS METHODs ### UTILS ########################################################################################
     @classmethod
-    def fromGraphTensor(cls, g, problem_based: str):
+    def fromGraphTensor(cls, g, focus: str):
         """ Create CompositeGraphObject from CompositeGraphTensor.
 
         :param g: a CompositeGraphTensor element to be translated into a CompositeGraphObject element.
-        :param problem_based: (str) 'n' node-based; 'a' arc-based; 'g' graph-based. See __init__ for details.
+        :param focus: (str) 'n' node-focused; 'a' arc-focused; 'g' graph-focused. See __init__ for details.
         :return: a CompositeGraphObject element whose tensor representation is g.
         """
-        nodegraph = coo_matrix((g.NodeGraph.values, tf.transpose(g.NodeGraph.indices))) if problem_based == 'g' else None
+        nodegraph = coo_matrix((g.NodeGraph.values, tf.transpose(g.NodeGraph.indices))) if focus == 'g' else None
         return cls(arcs=g.arcs.numpy(), nodes=g.nodes.numpy(), targets=g.targets.numpy(),
                    dim_node_label=g.DIM_NODE_LABEL.numpy(), type_mask=g.type_mask, set_mask=g.set_mask.numpy(),
                    output_mask=g.output_mask.numpy(), sample_weight=g.sample_weight.numpy(), NodeGraph=nodegraph,
-                   aggregation_mode=g.aggregation_mode, problem_based=problem_based)
+                   aggregation_mode=g.aggregation_mode, focus=focus)
 
 
 #######################################################################################################################

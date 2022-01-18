@@ -19,19 +19,19 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
     ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
                  graphs: list[GraphObject],
-                 problem_based: str,
+                 focus: str,
                  aggregation_mode: str,
                  batch_size: int = 32,
                  shuffle: bool = True):
         """ CONSTRUCTOR
 
         :param graphs: a list of GraphObject elements to be sequenced.
-        :param problem_based: (str) 'a' arcs-based, 'g' graph-based, 'n' node-based. See GraphObject.merge for details.
+        :param focus: (str) 'a' arcs-focused, 'g' graph-focused, 'n' node-focused. See GraphObject.merge for details.
         :param aggregation_mode: (str) incoming message aggregation mode: 'sum', 'average', 'normalized'. See GraphObject.merge for details.
         :param batch_size: (int) batch size for merging graphs data.
         :param shuffle: (bool) if True, at the end of the epoch, data is shuffled. No shuffling is performed otherwise. """
         self.data = graphs if isinstance(graphs, list) else [graphs]
-        self.problem_based = problem_based
+        self.focus = focus
         self.aggregation_mode = aggregation_mode
         self.batch_size = int(batch_size)
         self.shuffle = shuffle
@@ -41,7 +41,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
     # -----------------------------------------------------------------------------------------------------------------
     def build_batches(self):
         """ Create batches from sequencer data. """
-        graphs = [self.merge(self.data[i * self.batch_size: (i + 1) * self.batch_size], problem_based=self.problem_based,
+        graphs = [self.merge(self.data[i * self.batch_size: (i + 1) * self.batch_size], focus=self.focus,
                              aggregation_mode=self.aggregation_mode) for i in range(len(self))]
         self.graph_tensors = [self.to_graph_tensor(g) for g in graphs]
 
@@ -59,7 +59,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
         """ Get configuration dictionary. To be used with from_config().
         It is good practice providing this method to user. """
         return {"graphs": self.data,
-                "problem_based": self.problem_based,
+                "focus": self.focus,
                 "aggregation_mode": self.aggregation_mode,
                 "batch_size": self.batch_size,
                 "shuffle": self.shuffle}
@@ -74,8 +74,8 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):
         """ Representation string for the instance of GraphSequencer. """
-        problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.problem_based]
-        return f"graph_sequencer(type=multiple {problem}-based, len={len(self)}, " \
+        problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.focus]
+        return f"graph_sequencer(type=multiple {problem}-focused, len={len(self)}, " \
                f"aggregation='{self.aggregation_mode}', batch_size={self.batch_size}, shuffle={self.shuffle})"
 
     # -----------------------------------------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
         out = [g.nodes, g.arcs] + [newaxis(i) for i in [g.DIM_NODE_LABEL, g.set_mask, g.output_mask]] + \
               [(i.indices, newaxis(i.values), tf.constant(i.shape, dtype=tf.int64)) for i in [g.Adjacency, g.ArcNode, g.NodeGraph]]
 
-        if self.problem_based == 'g': mask = tf.ones((g.targets.shape[0]), dtype=bool)
+        if self.focus == 'g': mask = tf.ones((g.targets.shape[0]), dtype=bool)
         else: mask = tf.boolean_mask(set_mask, g.output_mask)
 
         targets = tf.boolean_mask(g.targets, mask)
@@ -139,18 +139,18 @@ class SingleGraphSequencer(MultiGraphSequencer):
     ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
                  graph: GraphObject,
-                 problem_based: str,
+                 focus: str,
                  batch_size: int = 32,
                  shuffle: bool = True):
         """ CONSTRUCTOR
 
         :param graph: a single GraphObject element to be sequenced.
-        :param problem_based: (str) 'a' arcs-based, 'g' graph-based, 'n' node-based. See GraphObject.__init__ for details.
+        :param focus: (str) 'a' arcs-focused, 'g' graph-focused, 'n' node-focused. See GraphObject.__init__ for details.
         :param batch_size: (int) batch size for set_mask_idx values.
         :param shuffle: (bool) if True, at the end of the epoch, set_mask_idx is shuffled. No shuffling is performed otherwise. """
         self.data = graph
         self.graph_tensor = self.to_graph_tensor(graph)
-        self.problem_based = problem_based
+        self.focus = focus
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.dtype = tf.keras.backend.floatx()
@@ -179,15 +179,15 @@ class SingleGraphSequencer(MultiGraphSequencer):
         """ Get configuration dictionary. To be used with from_config().
         It is good practice providing this method to user. """
         return {"graph": self.data,
-                "problem_based": self.problem_based,
+                "focus": self.focus,
                 "batch_size": self.batch_size,
                 "shuffle": self.shuffle}
 
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):
         """ Representation string for the instance of GraphSequencer. """
-        problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.problem_based]
-        return f"graph_sequencer(type=single {problem}-based, " \
+        problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.focus]
+        return f"graph_sequencer(type=single {problem}-focused, " \
                f"len={len(self)}, batch_size={self.batch_size}, shuffle={self.shuffle})"
 
     ## SETTER and GETTER METHODs ######################################################################################
