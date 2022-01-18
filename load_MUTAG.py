@@ -50,10 +50,10 @@ targs[range(len(targs)), gtargs] = 1
 print('OK')
 
 # HOMOGENEOUS GRAPHS
-graphs = [GraphObject(arcs=e, nodes=n, targets=t[np.newaxis, ...], problem_based='g')
+graphs = [GraphObject(arcs=e, nodes=n, targets=t[np.newaxis, ...], focus='g')
           for e, n, t in zip(edges, nodes, targs)]
 
 # HETEROGENEOUS GRAPHS
-composite_graphs = [CompositeGraphObject(arcs=g.arcs, nodes=g.nodes, targets=g.targets, problem_based='g',
+composite_graphs = [CompositeGraphObject(arcs=g.arcs, nodes=g.nodes, targets=g.targets, focus='g',
                                          type_mask=np.ones((g.nodes.shape[0], 1), dtype=bool), dim_node_label=(g.nodes.shape[1],))
                     for g in graphs]

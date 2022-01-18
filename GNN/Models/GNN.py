@@ -6,7 +6,7 @@ import tensorflow as tf
 ### CLASS GNN - NODE BASED ############################################################################################
 #######################################################################################################################
 class GNNnodeBased(tf.keras.Model):
-    """ Graph Neural Network (GNN) model for node-based applications. """
+    """ Graph Neural Network (GNN) model for node-focused applications. """
     name = "node"
 
     ## CONSTRUCTORS METHODS ###########################################################################################
@@ -310,7 +310,7 @@ class GNNnodeBased(tf.keras.Model):
 ### CLASS GNN - EDGE BASED ############################################################################################
 #######################################################################################################################
 class GNNarcBased(GNNnodeBased):
-    """ Graph Neural Network (GNN) model for arc-based applications. """
+    """ Graph Neural Network (GNN) model for arc-focused applications. """
     name = "arc"
 
     ## LOOP METHODS ###################################################################################################
@@ -334,13 +334,13 @@ class GNNarcBased(GNNnodeBased):
 ### CLASS GNN - GRAPH BASED ###########################################################################################
 #######################################################################################################################
 class GNNgraphBased(GNNnodeBased):
-    """ Graph Neural Network (GNN) model for graph-based applications. """
+    """ Graph Neural Network (GNN) model for graph-focused applications. """
     name = "graph"
 
     ## LOOP METHODS ###################################################################################################
     def Loop(self, *args, **kwargs) -> tuple[int, tf.Tensor, tf.Tensor]:
         """ Process a single graph, returning iteration, states and output.
-        Output of graph-based problem is the averaged nodes output. """
+        Output of graph-focused problem is the averaged nodes output. """
         k, state_nodes, out_nodes = super().Loop(*args, **kwargs)
         out_gnn = tf.sparse.sparse_dense_matmul(args[-1], out_nodes, adjoint_a=True)
         return k, state_nodes, out_gnn

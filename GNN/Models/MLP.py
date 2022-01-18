@@ -79,7 +79,7 @@ def MLP(input_dim: tuple[int], layers: list[int], activations, kernel_initialize
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_target: int, problem_based: str, dim_state: int,
+def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_target: int, focus: str, dim_state: int,
                    hidden_units: Optional[Union[int, list[int]]] = None,
                    *, layer: int = 0, get_state: bool = False, get_output: bool = False) ->  tuple[list[tuple[int,]],  list[int]]:
     """ Calculate input and output dimension for the MLP of state and output networks.
@@ -88,7 +88,7 @@ def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_t
     :param dim_node_label: (int) dimension of node label.
     :param dim_arc_label: (int) dimension of arc label.
     :param dim_target: (int) dimension of target.
-    :param problem_based: (str) s.t. len(problem_based) in [1,2] -> [{'a','n','g'} | {'1','2'}].
+    :param focus: (str) s.t. len(focus) in [1,2] -> [{'a','n','g'} | {'1','2'}].
     :param dim_state: (int)>=0 for state dimension parameter of the gnn.
     :param hidden_units: (int or list of int) for specifying units on hidden layers.
     :param layer: (int) LGNN USE: get the dims at gnn of the layer <layer>, from graph dims on layer 0. Default is 0, since GNN==LGNN in this case.
@@ -98,7 +98,7 @@ def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_t
             > tuple[0] is the input shape: a list of tuple of int (one tuple for each MLP state processing each node type).
             > tuple[1] provides MLP layers: a list of int describing the number of units for each layer, from 1st hidden to output layer. """
     assert layer >= 0
-    assert problem_based in ['a', 'n', 'g']
+    assert focus in ['a', 'n', 'g']
     assert dim_state >= 0
     assert isinstance(hidden_units, (int, type(None))) or (isinstance(hidden_units, list) and all(isinstance(x, int) for x in hidden_units))
 
@@ -108,11 +108,11 @@ def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_t
     # if LGNN, get MLPs layers for gnn in layer 2+
     if layer > 0:
         if DS != 0:
-            NL = NL + DS * GS + T * (problem_based != 'a') * GO
-            AL = AL + T * (problem_based == 'a') * GO
+            NL = NL + DS * GS + T * (focus != 'a') * GO
+            AL = AL + T * (focus == 'a') * GO
         else:
-            NL = NL + layer * NL * GS + ((layer - 1) * GS + 1) * T * (problem_based != 'a') * GO
-            AL = AL + T * (problem_based == 'a') * GO
+            NL = NL + layer * NL * GS + ((layer - 1) * GS + 1) * T * (focus != 'a') * GO
+            AL = AL + T * (focus == 'a') * GO
 
     # MLP state
     if net_name == 'state':
@@ -123,7 +123,7 @@ def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_t
     # MLP output
     elif net_name == 'output':
         if len(NL)>1: NL = array([0])
-        input_shape =  list((problem_based == 'a') * (NL + AL + DS) + NL + DS)
+        input_shape =  list((focus == 'a') * (NL + AL + DS) + NL + DS)
         output_shape = T
 
     # possible values for net_name in ['state','output'], otherwise raise error.
