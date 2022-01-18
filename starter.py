@@ -16,8 +16,8 @@ from GNN.Sequencers.GraphSequencers import MultiGraphSequencer
 aggregation_mode = 'average'
 # c: Classification
 addressed_problem = 'c'
-# g: graph-based
-problem_based = 'g'
+# g: graph-focused
+focus = 'g'
 
 # NET STATE PARAMETERS
 activations_net_state   : str = 'selu'
@@ -35,10 +35,10 @@ max_iter        : int = 5
 state_threshold : float = 0.01
 
 # LGNN PARAMETERS
-layers          : int = 5
+layers          : int = 3
 get_state       : bool = True
 get_output      : bool = True
-training_mode   : str = 'parallel'
+training_mode   : str = 'serial'
 
 # LEARNING PARAMETERS
 epochs          : int = 10
@@ -52,7 +52,7 @@ optimizer       : tf.keras.optimizers = tf.optimizers.Adam(learning_rate=0.01)
 #######################################################################################################################
 
 ### LOAD DATASET from MUTAG
-# problem is set automatically to graph-based one -> problem_based='g'
+# problem is set automatically to graph-focused one -> focus='g'
 # then aggregation_mode is set for each graph, since they are initialized with aggregation_mode = 'average',
 # but one can choose between 'average', 'sum', 'normalized'.
 from load_MUTAG import graphs
@@ -70,7 +70,7 @@ gGen = gTr[0].copy()
 # MLP NETS - STATE
 input_net_st, layers_net_st = zip(*[get_inout_dims(net_name='state', dim_node_label=gGen.DIM_NODE_LABEL,
                                                    dim_arc_label=gGen.DIM_ARC_LABEL, dim_target=gGen.DIM_TARGET,
-                                                   problem_based=problem_based, dim_state=dim_state,
+                                                   focus=focus, dim_state=dim_state,
                                                    layer=i, get_state=get_state, get_output=get_output) for i in range(layers)])
 
 nets_St = [MLP(input_dim=k, layers=j, activations=activations_net_state,
@@ -80,7 +80,7 @@ nets_St = [MLP(input_dim=k, layers=j, activations=activations_net_state,
 # MLP NETS - OUTPUT
 input_net_out, layers_net_out = zip(*[get_inout_dims(net_name='output', dim_node_label=gGen.DIM_NODE_LABEL,
                                                      dim_arc_label=gGen.DIM_ARC_LABEL, dim_target=gGen.DIM_TARGET,
-                                                     problem_based=problem_based, dim_state=dim_state,
+                                                     focus=focus, dim_state=dim_state,
                                                      layer=i, get_state=get_state, get_output=get_output) for i in range(layers)])
 
 nets_Out = [MLP(input_dim=k, layers=j, activations=activations_net_output,
@@ -97,9 +97,9 @@ lgnn.compile(optimizer=optimizer, loss=loss_function, average_st_grads=True, met
              training_mode=training_mode)
 
 ### DATA PROCESSING
-gTr_Sequencer = MultiGraphSequencer(gTr, problem_based, aggregation_mode, batch_size)
-gVa_Sequencer = MultiGraphSequencer(gVa, problem_based, aggregation_mode, batch_size)
-gTe_Sequencer = MultiGraphSequencer(gTe, problem_based, aggregation_mode, batch_size)
+gTr_Sequencer = MultiGraphSequencer(gTr, focus, aggregation_mode, batch_size)
+gVa_Sequencer = MultiGraphSequencer(gVa, focus, aggregation_mode, batch_size)
+gTe_Sequencer = MultiGraphSequencer(gTe, focus, aggregation_mode, batch_size)
 
 ### LEARNING PROCEDURE
 # gnn.fit(gTr_Sequencer, epochs=epochs, validation_data=gVa_Sequencer)
