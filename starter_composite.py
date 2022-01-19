@@ -34,13 +34,13 @@ max_iter        : int = 5
 state_threshold : float = 0.01
 
 # LGNN PARAMETERS
-layers          : int = 5
+layers          : int = 3
 get_state       : bool = True
 get_output      : bool = True
 training_mode   : str = 'parallel'
 
 # LEARNING PARAMETERS
-epochs          : int = 5
+epochs          : int = 10
 batch_size      : int = 500
 loss_function   : tf.keras.losses = tf.keras.losses.categorical_crossentropy
 optimizer       : tf.keras.optimizers = tf.optimizers.Adam(learning_rate=0.01)
