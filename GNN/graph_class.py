@@ -19,13 +19,15 @@ class GraphObject:
                  set_mask=None,
                  output_mask=None,
                  sample_weight=1,
-                 ArcNode=None,
                  NodeGraph=None,
-                 aggregation_mode: str = 'sum'):
+                 aggregation_mode: str = 'sum',
+                 dtype='float32'):
         """ CONSTRUCTOR METHOD
 
         :param nodes: Ordered Nodes Matrix X where nodes[i, :] = [i-th node Label].
         :param arcs: Ordered Arcs Matrix E where arcs[i, :] = [From ID Node | To ID Node | i-th arc Label].
+                     Note that [From ID Node | To ID Node] are used only for building Andjacency Matrix.
+                     Edge matrices is composed of only edge features.
         :param targets: Targets Matrix T with shape (Num of arcs/node targeted example or 1, dim_target example).
         :param focus: (str) The problem on which graph is used: 'a' arcs-focused, 'g' graph-focused, 'n' node-focused.
         :param set_mask: Array of boolean {0,1} to define arcs/nodes belonging to a set, when dataset == single GraphObject.
@@ -33,95 +35,100 @@ class GraphObject:
         :param sample_weight: target sample weight for loss computation. It can be int, float or numpy.array of ints or floats:
             > If int or float, all targets are weighted as sample_weight * ones.
             > If numpy.array, len(sample_weight) and targets.shape[0] must agree.
-        :param ArcNode: Sparse matrix of shape (num_of_arcs, num_of_nodes) s.t. A[i,j]=value if arc[i,2]==node[j].
         :param NodeGraph: Sparse matrix in coo format of shape (nodes.shape[0], {Num graphs or 1}) used only when focus=='g'.
         :param aggregation_mode: (str) The aggregation mode for the incoming message based on ArcNode and Adjacency matrices:
             ---> elem(matrix)={0-1};
             > 'average': A'X gives the average of incoming messages, s.t. sum(A[:,i])==1;
             > 'normalized': A'X gives the normalized message wrt the total number of g.nodes, s.t. sum(A)==1;
-            > 'sum': A'X gives the total sum of incoming messages, s.t. A={0,1}. """
-        self.dtype = tf.keras.backend.floatx()
+            > 'sum': A'X gives the total sum of incoming messages, s.t. A={0,1}.
+        :param dtype: set dtype for dense and sparse matrices. Default to np.float32. """
+        self.dtype = np.dtype(dtype)
 
         # store arcs, nodes, targets and sample weight.
+        arcs = np.unique(arcs, axis=0)
+        self.arcs = arcs[:, 2:].astype(self.dtype)
         self.nodes = nodes.astype(self.dtype)
-        self.arcs = np.unique(arcs, axis=0).astype(self.dtype)
         self.targets = targets.astype(self.dtype)
-        self.sample_weight = sample_weight * np.ones(self.targets.shape[0])
+        self.sample_weight = (sample_weight * np.ones(self.targets.shape[0])).astype(self.dtype)
 
         # store dimensions: note that first two columns of arcs contain nodes indices.
         self.DIM_NODE_LABEL = np.array(nodes.shape[1], ndmin=1, dtype=int)
-        self.DIM_ARC_LABEL = arcs.shape[1] - 2
-        self.DIM_TARGET = targets.shape[1]
+        self.DIM_ARC_LABEL = self.arcs.shape[1]
+        self.DIM_TARGET = self.targets.shape[1]
 
-        # setting the problem type: node, arcs or graph focused.
+        # setting the problem the graph is focused on: node, arcs or graph focused.
         lenMask = {'n': nodes.shape[0], 'a': arcs.shape[0], 'g': nodes.shape[0]}
 
         # build set_mask and output mask
         # for a dataset composed of only a single graph, its nodes must be divided into training, test and validation set.
         self.set_mask = np.ones(lenMask[focus], dtype=bool) if set_mask is None else set_mask.astype(bool)
-        self.output_mask = np.ones(len(self.set_mask), dtype=bool) if output_mask is None else output_mask.astype(bool)
+        self.output_mask = np.ones(lenMask[focus], dtype=bool) if output_mask is None else output_mask.astype(bool)
 
         # check lengths: output_mask must be as long as set_mask, if passed as parameter to constructor.
         if len(self.set_mask) != len(self.output_mask): raise ValueError('Error - len(<set_mask>) != len(<output_mask>)')
 
         # set nodes and arcs aggregation.
+        self.checkAggregation(aggregation_mode)
         self.aggregation_mode = str(aggregation_mode)
-
-        # build ArcNode matrix or set from constructor's parameter.
-        self.ArcNode = self.buildArcNode(self.aggregation_mode) if ArcNode is None else coo_matrix(ArcNode, dtype=self.dtype)
 
         # build Adjancency Matrix A.
         # Note that it may be an aggregated version of the 'normal' Adjacency Matrix (with only 0 and 1),
         # since each element is set from aggregation mode.
-        self.Adjacency = self.buildAdjacency()
+        self.Adjacency = self.buildAdjacency(arcs[:, :2])
+
+        # build ArcNode matrix or set from constructor's parameter.
+        self.ArcNode = self.buildArcNode()
 
         # build node_graph conversion matrix, to transform a node-focused output into a graph-focused one.
         self.NodeGraph = self.buildNodeGraph(focus) if NodeGraph is None else coo_matrix(NodeGraph, dtype=self.dtype)
 
     # -----------------------------------------------------------------------------------------------------------------
-    def buildAdjacency(self):
+    def buildAdjacency(self, indices):
         """ Build the 'Aggregated' Adjacency Matrix ADJ, s.t. ADJ[i,j]=value if edge (i,j) exists in E.
 
-        value is set by self.aggregation_mode: 'sum':1, 'normalized':1/self.nodes.shape[0], 'average':1/number_of_neighbors. """
-        values = self.ArcNode.data
-        indices = zip(*self.arcs[:, :2].astype(int))
-        return coo_matrix((values, indices), shape=(self.nodes.shape[0], self.nodes.shape[0]), dtype=self.dtype)
+        Note that if the edge is bidirection, both (i,j) and (j,i) must exist in indices.
+        Values are set by self.aggregation_mode: 'sum':1, 'normalized':1/self.nodes.shape[0], 'average':1/number_of_neighbors.
 
-    # -----------------------------------------------------------------------------------------------------------------
-    def buildArcNode(self, aggregation_mode):
-        """ Build ArcNode Matrix AN of shape (number_of_arcs, number_of_nodes) where A[i,j]=value if arc[i, 1]==j-th node.
-        Compute the matmul(A, msg:=message) to get the incoming message on each node.
-
-        :return: sparse ArcNode Matrix in coo format, for memory efficiency.
-        :raise: Error if <aggregation_mode> is not in ['average','sum','normalized']. """
-        if aggregation_mode not in ['sum', 'normalized', 'average']: raise ValueError("ERROR: Unknown aggregation mode")
+        :return: sparse ArcNode Matrix in coo format, for memory efficiency. """
 
         # column indices of A are located in the second column of the arcs tensor,
         # since they represent the node id pointed by the corresponding arc.
         # row == arc id, is an ordered array of int from 0 to number of arcs.
-        col = self.arcs[:, 1]
-        row = np.arange(0, len(col))
+        indices = indices.astype(int)
+        col = indices[:, 1]
 
         # SUM node aggregation
         # incoming message as sum of neighbors states and labels.
-        # AN in {0, 1}.
-        values_vector = np.ones(len(col))
+        # ADJ in {0, 1}.
+        values = np.ones(len(col))
 
         # NORMALIZED node aggregation
         # incoming message as sum of neighbors states and labels divided by the number of nodes in the graph.
-        # sum(AN)==1.
-        if aggregation_mode == 'normalized':
-            values_vector = values_vector * float(1 / len(col))
+        # sum(ADJ)==1.
+        if self.aggregation_mode == 'normalized':
+            values = values * float(1 / len(col))
 
         # AVERAGE node aggregation
         # incoming message as average of neighbors states and labels.
-        # sum(AN[:, i])==1.
-        elif aggregation_mode == 'average':
+        # sum(ADJ[:, i])==1.
+        elif self.aggregation_mode == 'average':
             val, col_index, destination_node_counts = np.unique(col, return_inverse=True, return_counts=True)
-            values_vector = values_vector / destination_node_counts[col_index]
+            values = values / destination_node_counts[col_index]
 
-        # isolated nodes correction: if nodes[i] is isolated, then ArcNode[:,i]=0, to maintain nodes ordering.
-        return coo_matrix((values_vector, (row, col)), shape=(self.arcs.shape[0], self.nodes.shape[0]), dtype=self.dtype)
+        # isolated nodes correction: if nodes[i] is isolated, then ADJ[:,i]=0, to maintain nodes ordering.
+        return coo_matrix((values, (indices[:, 0], col)), shape=(self.nodes.shape[0], self.nodes.shape[0]), dtype=self.dtype)
+
+    # -----------------------------------------------------------------------------------------------------------------
+    def buildArcNode(self):
+        """ Build ArcNode Matrix AN of shape (number_of_arcs, number_of_nodes) where A[i,j]=value if arc[i, 1]==j-th node.
+        Compute the matmul(A, msg:=message) to get the incoming message on each node.
+
+        :return: sparse ArcNode Matrix in coo format, for memory efficiency. """
+        values = self.Adjacency.data
+        indices = (np.arange(0, len(values)), self.Adjacency.col)
+
+        # isolated nodes correction: if nodes[i] is isolated, then AN[:,i]=0, to maintain nodes ordering.
+        return coo_matrix((values, indices), shape=(self.arcs.shape[0], self.nodes.shape[0]), dtype=self.dtype)
 
     # -----------------------------------------------------------------------------------------------------------------
     def buildNodeGraph(self, focus: str):
@@ -142,18 +149,27 @@ class GraphObject:
         """ COPY METHOD
 
         :return: a Deep Copy of the GraphObject instance. """
-        return GraphObject(nodes=self.getNodes(), arcs=self.getArcs(), targets=self.getTargets(),
+        return GraphObject(nodes=self.getNodes(), arcs=self.getArcs(return_indices=True), targets=self.getTargets(),
                            set_mask=self.getSetMask(), output_mask=self.getOutputMask(),
                            sample_weight=self.getSampleWeights(), NodeGraph=self.getNodeGraph(),
-                           aggregation_mode=self.aggregation_mode)
+                           aggregation_mode=self.aggregation_mode, dtype=np.dtype(self.dtype))
+
+    # -----------------------------------------------------------------------------------------------------------------
+    def __copy__(self):
+        """ deep copy method """
+        return self.copy()
+
+    # -----------------------------------------------------------------------------------------------------------------
+    def __deepcopy__(self):
+        return self.copy()
 
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):
         """ Representation string of the instance of GraphObject. """
         set_mask_type = 'all' if np.all(self.set_mask) else 'mixed'
-        return f"graph(n={self.nodes.shape[0]}, a={self.arcs.shape[0]}, " \
+        return f"graph(n={self.nodes.shape[0]}, a={self.arcs.shape[0]}, t={self.targets.shape[0]}, " \
                f"ndim={self.DIM_NODE_LABEL}, adim={self.DIM_ARC_LABEL}, tdim={self.DIM_TARGET}, " \
-               f"set={set_mask_type}, mode={self.aggregation_mode})"
+               f"set={set_mask_type}, mode={self.aggregation_mode}, dtype={self.dtype})"
 
     # -----------------------------------------------------------------------------------------------------------------
     def __str__(self):
@@ -163,14 +179,78 @@ class GraphObject:
     ## SETTERS ########################################################################################################
     def setAggregation(self, aggregation_mode: str) -> None:
         """ Set ArcNode values for the specified :param aggregation_mode: """
-        self.ArcNode = self.buildArcNode(aggregation_mode)
-        self.Adjacency = self.buildAdjacency()
+        self.checkAggregation(aggregation_mode)
         self.aggregation_mode = aggregation_mode
+        self.Adjacency = self.buildAdjacency(self.getArcs(return_indices=True)[:,:2])
+        self.ArcNode = self.buildArcNode()
+
+    # -----------------------------------------------------------------------------------------------------------------
+    def todtype(self, dtype='float32'):
+        """ cast GraphObject variables to :param dtype: dtype. """
+        self.dtype = np.dtype(dtype)
+        self.nodes = self.nodes.astype(dtype)
+        self.arcs = self.arcs.astype(dtype)
+        self.targets = self.targets.astype(dtype)
+        self.sample_weight = self.sample_weight.astype(dtype)
+        self.Adjacency = self.Adjacency.astype(dtype)
+        self.ArcNode = self.ArcNode.astype(dtype)
+        self.NodeGraph = self.NodeGraph.astype(dtype)
+
+    ## NORMALIZERS ####################################################################################################
+    def normalize(self, scalers: dict[dict], return_scalers: bool = False):
+        """ Normalize GraphObject with an arbitrary scaler. Work well tith scikit-learn preprocessing scalers.
+
+        :param scalers: (dict). Possible keys are ['nodes', 'arcs', 'targets']
+                        scalers[key] is a dict with possible keys in ['class', 'kwargs']
+                        scalers[key]['class'] is the scaler class of the arbitrary scaler
+                        scalers[key]['kwargs'] are the keywords for fitting the arbitrary scaler on key data.
+        :param return_scalers: (bool). If True, a dictionary scaler_dict is returned.
+                               The output is a dict with possible keys in [nodes, arcs, targets].
+                               If a scaler is missing, related key is not used.
+                               For example, if scalers_kwargs.keys() in [['nodes','targets'], ['targets','nodes']],
+                               the output is ad dict {'nodes': nodes_scaler, 'targets': target_scaler}. """
+
+        # output scaler, if needed
+        scalers_output_dict = dict()
+
+        # normalize nodes
+        if 'nodes' in scalers:
+            node_scaler = scalers['nodes']['class'](**scalers['nodes']['kwargs'].get('nodes', dict())).fit(self.nodes)
+            self.nodes = node_scaler.transform(self.nodes)
+            scalers_output_dict['nodes'] = node_scaler
+
+        # normalize arcs if arcs features are available
+        if 'arcs' in scalers and self.DIM_ARC_LABEL > 0:
+            arcs_scaler = scalers['arcs']['class'](**scalers['arcs']['kwargs'].get('arcs', dict())).fit(self.arcs)
+            self.arcs = arcs_scaler.transform(self.arcs)
+            scalers_output_dict['arcs'] = arcs_scaler
+
+        # normalize targets
+        if 'targets' in scalers:
+            target_scaler = scalers['targets']['class'](**scalers['targets']['kwargs'].get('targets', dict())).fit(self.targets)
+            self.targets = target_scaler.transform(self.targets)
+            scalers_output_dict['targets'] = target_scaler
+
+        if return_scalers:
+            return scalers_output_dict
+
+    # -----------------------------------------------------------------------------------------------------------------
+    def normalize_from(self, nodes_scaler=None, arcs_scaler=None, targets_scaler=None):
+        # normalize nodes
+        if nodes_scaler is not None: self.nodes = nodes_scaler.transform(self.nodes)
+
+        # normalize arcs if arcs features are available
+        if arcs_scaler is not None and self.DIM_ARC_LABEL > 0: self.arcs = arcs_scaler.transform(self.arcs)
+
+        # normalize targets
+        if targets_scaler is not None: self.targets = targets_scaler.transform(self.targets)
 
     ## GETTERS ########################################################################################################
     # ALL return a deep copy of the corresponding element.
-    def getArcs(self):
-        return self.arcs.copy()
+    def getArcs(self, return_indices=False):
+        arcs = self.arcs.copy()
+        if return_indices: arcs = np.hstack([np.array((self.Adjacency.row, self.Adjacency.col)).transpose(), arcs])
+        return arcs
 
     def getNodes(self):
         return self.nodes.copy()
@@ -196,13 +276,17 @@ class GraphObject:
     def getSampleWeights(self):
         return self.sample_weight.copy()
 
+    def getDtype(self):
+        return np.dtype(self.dtype)
 
     ## SAVER METHODs ##################################################################################################
     def get_dict_data(self):
         """ Return all useful elements for storing a graph :param g:, in a dict format. """
 
         # nodes, arcs and targets are saved by default.
-        data = {i: j for i, j in zip(['nodes', 'arcs', 'targets'], [self.nodes, self.arcs, self.targets])}
+        # arcs matrix are built so that each row contains [idx node outgoing arc, idx node ingoing arc, arc's features]
+        data = {i: j for i, j in zip(['nodes', 'arcs', 'targets'],
+                                     [self.nodes, self.getArcs(return_indices=True), self.targets])}
 
         # set_mask, output_mask and sample_weight are saved only in they have not all elements equal to 1.
         if not all(self.set_mask): data['set_mask'] = self.set_mask
@@ -304,6 +388,15 @@ class GraphObject:
         os.makedirs(folder)
         for idx, g in enumerate(glist): GraphObject.save_txt(f"{folder}/g{idx}", g, **kwargs)
 
+    ## STATIC METHODs ### UTILS #######################################################################################
+    @staticmethod
+    def checkAggregation(aggregation_mode):
+        """ Check aggregation_mode parameter. Must be in ['average', 'sum', 'normalized'].
+
+        :raise: Error if :param aggregation_mode: is not in ['average', 'sum', 'normalized']."""
+        if str(aggregation_mode) not in ['sum', 'normalized', 'average']:
+            raise ValueError("ERROR: Unknown aggregation mode")
+
     ## CLASS METHODs ### LOADER #######################################################################################
     @classmethod
     def load(cls, graph_npz_path, focus, aggregation_mode, **kwargs):
@@ -314,13 +407,15 @@ class GraphObject:
         :param aggregation_mode: (str) incoming message aggregation mode. See BuildArcNode for details.
         :param kwargs: kwargs argument of numpy.load function. """
         if '.npz' not in graph_npz_path: graph_npz_path += '.npz'
+
+        dtype = kwargs.pop('dtype', 'float32')
         data = dict(np.load(graph_npz_path, **kwargs))
 
         # Translate matrices from (length, 3) [values, index1, index2] to coo sparse matrices.
         nodegraph = data.pop('NodeGraph', None)
         if nodegraph is not None: data['NodeGraph'] = coo_matrix((nodegraph[:, 0], nodegraph[:, 1:].astype(int)))
 
-        return cls(focus=focus, aggregation_mode=aggregation_mode, **data)
+        return cls(focus=focus, aggregation_mode=aggregation_mode, dtype=dtype, **data)
 
     # -----------------------------------------------------------------------------------------------------------------
     @classmethod
@@ -341,8 +436,9 @@ class GraphObject:
         if graph_folder_path[-1] != '/': graph_folder_path += '/'
 
         files = os.listdir(graph_folder_path)
-        keys = [i.rsplit('.')[0] for i in files] + ['focus', 'aggregation_mode']
-        vals = [np.loadtxt(graph_folder_path + i, ndmin=2, **kwargs) for i in files] + [focus, aggregation_mode]
+        dtype = kwargs.pop('dtype', 'float32')
+        keys = [i.rsplit('.')[0] for i in files]
+        vals = [np.loadtxt(graph_folder_path + i, ndmin=2, **kwargs) for i in files]
 
         # create a dictionary with parameters and values to be passed to GraphObject's constructor.
         data = dict(zip(keys, vals))
@@ -351,7 +447,7 @@ class GraphObject:
         nodegraph = data.pop('NodeGraph', None)
         if nodegraph is not None: data['NodeGraph'] = coo_matrix((nodegraph[:, 0], nodegraph[:, 1:].astype(int)))
 
-        return cls(**data)
+        return cls(focus=focus, aggregation_mode=aggregation_mode, dtype=dtype, **data)
 
     # -----------------------------------------------------------------------------------------------------------------
     @classmethod
@@ -391,14 +487,15 @@ class GraphObject:
         :param aggregation_mode: (str) incoming message aggregation mode. See BuildArcNode for details.
         :param dtype: dtype of elements of new arrays after merging procedure.
         :return: a new GraphObject containing all the information (nodes, arcs, targets, ...) in glist. """
-        get_data = lambda x: [(i.getNodes(), i.nodes.shape[0], i.getArcs(), i.getTargets(), i.getSetMask(), i.getOutputMask(),
+        get_data = lambda x: [(i.getNodes(), i.nodes.shape[0], i.getArcs(return_indices=True),
+                               i.getTargets(), i.getSetMask(), i.getOutputMask(),
                                i.getSampleWeights(), i.getNodeGraph()) for i in x]
         nodes, nodes_lens, arcs, targets, set_mask, output_mask, sample_weight, nodegraph_list = zip(*get_data(glist))
 
         # get single matrices for new graph
+        nodes = np.concatenate(nodes, axis=0, dtype=dtype)
         for i, elem in enumerate(arcs): elem[:, :2] += sum(nodes_lens[:i])
         arcs = np.concatenate(arcs, axis=0, dtype=dtype)
-        nodes = np.concatenate(nodes, axis=0, dtype=dtype)
         targets = np.concatenate(targets, axis=0, dtype=dtype)
         set_mask = np.concatenate(set_mask, axis=0, dtype=bool)
         output_mask = np.concatenate(output_mask, axis=0, dtype=bool)
@@ -408,13 +505,13 @@ class GraphObject:
         nodegraph = block_diag(nodegraph_list, dtype=dtype)
 
         # resulting GraphObject.
-        return GraphObject(arcs=arcs, nodes=nodes, targets=targets, focus=focus,
+        return GraphObject(nodes=nodes, arcs=arcs, targets=targets, focus=focus,
                            set_mask=set_mask, output_mask=output_mask, sample_weight=sample_weight,
-                           NodeGraph=nodegraph, aggregation_mode=aggregation_mode)
+                           NodeGraph=nodegraph, aggregation_mode=aggregation_mode, dtype=dtype)
 
     ## CLASS METHODs ### UTILS ########################################################################################
     @classmethod
-    def fromGraphTensor(cls, g, focus: str):
+    def fromGraphTensor(cls, g, focus: str, dtype='float32'):
         """ Create GraphObject from GraphTensor.
 
         :param g: a GraphTensor element to be translated into a GraphObject element.
@@ -422,9 +519,9 @@ class GraphObject:
         :return: a GraphObject element whose tensor representation is g.
         """
         nodegraph = coo_matrix((g.NodeGraph.values, tf.transpose(g.NodeGraph.indices))) if focus == 'g' else None
-        return cls(arcs=g.arcs.numpy(), nodes=g.nodes.numpy(), targets=g.targets.numpy(),
+        return cls(nodes=g.nodes.numpy(), arcs=np.hstack([g.Adjacency.indices, g.arcs.numpy()]), targets=g.targets.numpy(),
                    set_mask=g.set_mask.numpy(), output_mask=g.output_mask.numpy(), sample_weight=g.sample_weight.numpy(),
-                   NodeGraph=nodegraph, aggregation_mode=g.aggregation_mode, focus=focus)
+                   NodeGraph=nodegraph, aggregation_mode=g.aggregation_mode, focus=focus, dtype=dtype)
 
 
 #######################################################################################################################
@@ -435,15 +532,15 @@ class GraphTensor:
 
     ## CONSTRUCTORS METHODs ###########################################################################################
     def __init__(self, nodes, dim_node_label, arcs, targets, set_mask, output_mask, sample_weight,
-                 Adjacency, ArcNode, NodeGraph, aggregation_mode):
+                 Adjacency, ArcNode, NodeGraph, aggregation_mode, dtype):
         """ It contains all information to be passed to GNN model,
         but described with tensorflow dense/sparse tensors. """
 
-        self.dtype = tf.keras.backend.floatx()
+        self.dtype = tf.as_dtype(dtype)
         self.aggregation_mode = aggregation_mode
 
         # store dimensions: first two columns of arcs contain nodes indices.
-        self.DIM_ARC_LABEL = arcs.shape[1] - 2
+        self.DIM_ARC_LABEL = arcs.shape[1]
         self.DIM_TARGET = targets.shape[1]
 
         # constant dense tensors.
@@ -468,7 +565,7 @@ class GraphTensor:
         return GraphTensor(nodes=self.nodes, dim_node_label=self.DIM_NODE_LABEL, arcs=self.arcs, targets=self.targets,
                            set_mask=self.set_mask, output_mask=self.output_mask, sample_weight=self.sample_weight,
                            Adjacency=self.Adjacency, ArcNode=self.ArcNode, NodeGraph=self.NodeGraph,
-                           aggregation_mode=self.aggregation_mode)
+                           aggregation_mode=self.aggregation_mode, dtype=self.dtype)
 
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):
@@ -516,7 +613,7 @@ class GraphTensor:
         saving_function = np.savez_compressed if compressed else np.savez
         saving_function(graph_npz_path, dim_node_label=g.DIM_NODE_LABEL,
                         nodes=g.nodes, arcs=g.arcs, targets=g.targets, sample_weight=g.sample_weight,
-                        set_mask=g.set_mask, output_mask=g.output_mask, **sparse_data, **kwargs)
+                        set_mask=g.set_mask, output_mask=g.output_mask, dtype=g.dtype, **sparse_data, **kwargs)
 
     ## CLASS METHODs ### LOADER #######################################################################################
     @classmethod
@@ -526,6 +623,7 @@ class GraphTensor:
         :param graph_npz_path: path to the npz graph file.
         :param kwargs: kwargs argument of numpy.load function. """
         if '.npz' not in graph_npz_path: graph_npz_path += '.npz'
+        dtype = kwargs.pop('dtype', 'tf.float32')
         data = dict(np.load(graph_npz_path, **kwargs))
 
         data['aggregation_mode'] = str(data['aggregation_mode'])
@@ -542,9 +640,9 @@ class GraphTensor:
         :param g: a GraphObject element to be translated into a GraphTensor element.
         :return: a GraphTensor element whose normal representation is g. """
         return cls(nodes=g.nodes, dim_node_label=g.DIM_NODE_LABEL, arcs=g.arcs, targets=g.targets,
-                    set_mask=g.set_mask, output_mask=g.output_mask, sample_weight=g.sample_weight,
-                    NodeGraph=cls.COO2SparseTensor(g.NodeGraph), Adjacency=cls.COO2SparseTensor(g.Adjacency),
-                    ArcNode=cls.COO2SparseTensor(g.ArcNode), aggregation_mode=g.aggregation_mode)
+                   set_mask=g.set_mask, output_mask=g.output_mask, sample_weight=g.sample_weight,
+                   NodeGraph=cls.COO2SparseTensor(g.NodeGraph), Adjacency=cls.COO2SparseTensor(g.Adjacency),
+                   ArcNode=cls.COO2SparseTensor(g.ArcNode), aggregation_mode=g.aggregation_mode, dtype=g.dtype)
 
     # -----------------------------------------------------------------------------------------------------------------
     @staticmethod
@@ -556,5 +654,5 @@ class GraphTensor:
         # SparseTensor is created and then reordered to be correctly computable. NOTE: reorder() recommended by TF2.0+.
         sparse_tensor = tf.SparseTensor(indices=indices, values=coo_matrix.data, dense_shape=coo_matrix.shape)
         sparse_tensor = tf.sparse.reorder(sparse_tensor)
-        sparse_tensor = tf.cast(sparse_tensor, dtype=tf.keras.backend.floatx())
+        sparse_tensor = tf.cast(sparse_tensor, dtype=coo_matrix.dtype)
         return sparse_tensor

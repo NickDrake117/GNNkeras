@@ -29,7 +29,6 @@ class CompositeGraphObject(GraphObject):
         :param sample_weight: target sample weight for loss computation. It can be int, float or numpy.array of ints or floats:
             > If int or float, all targets are weighted as sample_weight * ones.
             > If numpy.array, len(sample_weight) and targets.shape[0] must agree.
-        :param ArcNode: Sparse matrix of shape (num_of_arcs, num_of_nodes) s.t. A[i,j]=value if arc[i,2]==node[j].
         :param NodeGraph: Sparse matrix in coo format of shape (nodes.shape[0], {Num graphs or 1}) used only when focus=='g'.
         :param aggregation_mode: (str) The aggregation mode for the incoming message based on ArcNode and Adjacency matrices:
             ---> elem(matrix)={0-1};
@@ -42,7 +41,7 @@ class CompositeGraphObject(GraphObject):
         # Be careful when initializing a new graph!
         self.type_mask = type_mask.astype(bool)
 
-        # AFTER initializing type_mask because of self.buildAdjacency method.
+        # AFTER initializing type_mask because of self.buildAdjacency method which is called-back in super().__init__(...)
         super().__init__(nodes, arcs, targets, *args, **kwargs)
 
         # store dimensions: first two columns of arcs contain nodes indices.
@@ -54,6 +53,41 @@ class CompositeGraphObject(GraphObject):
         self.CompositeAdjacencies = self.buildCompositeAdjacency()
 
     # -----------------------------------------------------------------------------------------------------------------
+    def buildAdjacency(self, indices):
+        """ Build ArcNode Matrix A of shape (number_of_arcs, number_of_nodes) where A[i,j]=value if arc[i,2]==node[j].
+        Compute the matmul(m:=message,A) to get the incoming message on each node, composed of nodes' states and arcs' labels.
+
+        :return: sparse ArcNode Matrix in coo format, for memory efficiency. """
+
+
+        # initialize matrix. It's useless, just for not having any warning message at the end of the method.
+        matrix = None
+        indices = indices.astype(int)
+
+        # exploit super function.
+        if self.aggregation_mode in ['normalized', 'average', 'sum']:
+            matrix = super().buildAdjacency(indices)
+
+        # composite average node aggregation - incoming message as sum of averaged type-focused neighbors state,
+        # e.g. if a node i has 3 neighbors (2 of them belonging to a type k1, the other to a type k2):
+        # the message coming from k1's nodes is divided by 2,
+        # while the message coming from k2's node is taken as is, being that the only one neighbor belonging to k2.
+        elif self.aggregation_mode == 'composite_average':
+            # sum node aggregation - incoming message as sum of neighbors states and labels, then process composite average.
+            # Since in super buildAdjacency, no check on aggregation-mode is performed: if it is not correct, 'sum' is performed.
+            matrix = super().buildAdjacency(indices)
+
+            # set to 0 rows of nodes of incorrect type.
+            for t in self.type_mask.transpose():
+                if not np.any(t): continue
+                #type_node_mask = np.in1d(indices[:, 0], np.argwhere(t), invert=False)
+                type_node_mask = np.in1d(matrix.row, np.argwhere(t), invert=False)
+                val, col_index, destination_node_counts = np.unique(matrix.col[type_node_mask], return_inverse=True, return_counts=True)
+                matrix.data[type_node_mask] /= destination_node_counts[col_index]
+
+        return matrix
+
+    # -----------------------------------------------------------------------------------------------------------------
     def buildCompositeAdjacency(self):
         """ Build a list ADJ of Composite Aggregated Adjacency Matrices,
         s.t. ADJ[t][i,j]=value if an edge (i,j) exists AND type(i)==k.
@@ -63,51 +97,19 @@ class CompositeGraphObject(GraphObject):
 
         # set to 0 rows of nodes of incorrect type.
         for t, a in zip(self.type_mask.transpose(), composite_adjacencies):
-            not_type_node_mask = np.in1d(self.arcs[:, 0], np.argwhere(t), invert=True)
+            #not_type_node_mask = np.in1d(self.arcs[:, 0], np.argwhere(t), invert=True)
+            not_type_node_mask = np.in1d(a.row, np.argwhere(t), invert=True)
             a.data[not_type_node_mask] = 0
             a.eliminate_zeros()
 
         return composite_adjacencies
 
     # -----------------------------------------------------------------------------------------------------------------
-    def buildArcNode(self, aggregation_mode):
-        """ Build ArcNode Matrix A of shape (number_of_arcs, number_of_nodes) where A[i,j]=value if arc[i,2]==node[j].
-        Compute the matmul(m:=message,A) to get the incoming message on each node, composed of nodes' states and arcs' labels.
-
-        :return: sparse ArcNode Matrix in coo format, for memory efficiency.
-        :raise: Error if <aggregation_mode> is not in ['average', 'sum', 'normalized', 'composite_average']."""
-        if aggregation_mode not in ['normalized', 'average', 'sum', 'composite_average']: raise ValueError("ERROR: Unknown aggregation mode")
-
-        # initialize matrix. It's useless, just for not having any warning message at the end of the method.
-        matrix = None
-
-        # exploit super function.
-        if aggregation_mode in ['normalized', 'average', 'sum']:
-            matrix = super().buildArcNode(aggregation_mode)
-
-        # composite average node aggregation - incoming message as sum of averaged type-focused neighbors state,
-        # e.g. if a node i has 3 neighbors (2 of them belonging to a type k1, the other to a type k2):
-        # the message coming from k1's nodes is divided by 2,
-        # while the message coming from k2's node is taken as is, being that the only one neighbor belonging to k2.
-        elif aggregation_mode == 'composite_average':
-            # sum node aggregation - incoming message as sum of neighbors states and labels, then process composite average.
-            matrix = super().buildArcNode('sum')
-
-            # set to 0 rows of nodes of incorrect type.
-            for t in self.type_mask.transpose():
-                if not np.any(t): continue
-                type_node_mask = np.in1d(self.arcs[:, 0], np.argwhere(t), invert=False)
-                val, col_index, destination_node_counts = np.unique(matrix.col[type_node_mask], return_inverse=True, return_counts=True)
-                matrix.data[type_node_mask] /= destination_node_counts[col_index]
-
-        return matrix
-
-    # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
         """ COPY METHOD
 
         :return: a Deep Copy of the GraphObject instance. """
-        return CompositeGraphObject(arcs=self.getArcs(), nodes=self.getNodes(), targets=self.getTargets(),
+        return CompositeGraphObject(nodes=self.getNodes(), arcs=self.getArcs(return_indices=True), targets=self.getTargets(),
                                     set_mask=self.getSetMask(), output_mask=self.getOutputMask(),
                                     sample_weight=self.getSampleWeights(), NodeGraph=self.getNodeGraph(),
                                     aggregation_mode=self.aggregation_mode, dim_node_label=self.DIM_NODE_LABEL,
@@ -137,9 +139,18 @@ class CompositeGraphObject(GraphObject):
         data['dim_node_label'] = self.DIM_NODE_LABEL
         return data
 
+    ## STATIC METHODs ### UTILS #######################################################################################
+    @staticmethod
+    def checkAggregation(aggregation_mode):
+        """ Check aggregation_mode parameter. Must be in ['average', 'sum', 'normalized', 'composite_average'].
+
+        :raise: Error if :param aggregation_mode: is not in ['average', 'sum', 'normalized', 'composite_average']."""
+        if aggregation_mode not in ['normalized', 'average', 'sum', 'composite_average']:
+            raise ValueError("ERROR: Unknown aggregation mode")
+
     ## CLASS METHODs ### MERGER #######################################################################################
     @classmethod
-    def merge(cls, glist, focus: str, aggregation_mode: str, dtype='float32'):
+    def merge(cls, glist: list, focus: str, aggregation_mode: str, dtype='float32'):
         """ Method to merge a list of CompositeGraphObject elements in a single GraphObject element.
 
         :param glist: list of CompositeGraphObject elements to be merged.
@@ -161,8 +172,9 @@ class CompositeGraphObject(GraphObject):
         type_mask = np.concatenate(type_mask, axis=0, dtype=bool)
 
         # resulting CompositeGraphObject.
-        return CompositeGraphObject(arcs=g.arcs, nodes=g.nodes, targets=g.targets, type_mask=type_mask,
-                                    dim_node_label=dim_node_label.pop(), focus=focus,
+        ###CONTROLLARE ARCS
+        return CompositeGraphObject(nodes=g.nodes, arcs=g.getArcs(return_indices=True), targets=g.targets,
+                                    type_mask=type_mask, dim_node_label=dim_node_label.pop(), focus=focus,
                                     set_mask=g.set_mask, output_mask=g.output_mask, sample_weight=g.sample_weight,
                                     NodeGraph=g.NodeGraph, aggregation_mode=aggregation_mode)
 
@@ -176,7 +188,7 @@ class CompositeGraphObject(GraphObject):
         :return: a CompositeGraphObject element whose tensor representation is g.
         """
         nodegraph = coo_matrix((g.NodeGraph.values, tf.transpose(g.NodeGraph.indices))) if focus == 'g' else None
-        return cls(arcs=g.arcs.numpy(), nodes=g.nodes.numpy(), targets=g.targets.numpy(),
+        return cls(nodes=g.nodes.numpy(), arcs=np.hstack([g.Adjacency.indices, g.arcs.numpy()]), targets=g.targets.numpy(),
                    dim_node_label=g.DIM_NODE_LABEL.numpy(), type_mask=g.type_mask, set_mask=g.set_mask.numpy(),
                    output_mask=g.output_mask.numpy(), sample_weight=g.sample_weight.numpy(), NodeGraph=nodegraph,
                    aggregation_mode=g.aggregation_mode, focus=focus)

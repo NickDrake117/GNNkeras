@@ -52,7 +52,7 @@ class LGNN(tf.keras.Model):
         config = self.get_config()
         config["gnns"] = [i.copy(copy_weights=copy_weights) for i in config["gnns"]]
 
-        return self.self.from_config(config)
+        return self.from_config(config)
 
     ## CONFIG METHODs #################################################################################################
     def get_config(self):
@@ -144,10 +144,10 @@ class LGNN(tf.keras.Model):
         :raise: ValueError – In case of invalid arguments for `optimizer`, `loss` or `metrics`. """
 
         # force eager execution, since graph-mode must be implemented.
-        kwargs["run_eagerly"] = True
+        _ = kwargs.pop("run_eagerly", None)
 
-        super().compile(*args, **kwargs)
-        for gnn in self.gnns: gnn.compile(*args, average_st_grads=average_st_grads, **kwargs)
+        super().compile(*args, **kwargs, run_eagerly=True)
+        for gnn in self.gnns: gnn.compile(*args, average_st_grads=average_st_grads, **kwargs, run_eagerly=False)
         self.training_mode = training_mode
         self.average_st_grads = average_st_grads
 
@@ -185,7 +185,7 @@ class LGNN(tf.keras.Model):
 
         # get a copy of node and arcs, to prevent strange behaviours.
         # #EastherEgg: it's meglio prevenire that curare.
-        nodes, arcs = tf.constant(nodes), tf.constant(arcs)
+        nodes, arcs = tf.constant(nodes, dtype=dtype), tf.constant(arcs, dtype=dtype)
 
         # define tensors with shape[1]==0 so that it can be concatenate with tf.concat().
         nodeplus = tf.zeros((nodes.shape[0], 0), dtype=dtype)
@@ -299,9 +299,7 @@ class LGNN(tf.keras.Model):
 
             # callbacks option.
             callbacks = [list() for _ in range(self.LAYERS)]
-            if 'callbacks' in kwargs:
-                assert len(kwargs['callbacks']) == self.LAYERS
-                callbacks = kwargs.pop('callbacks')
+            if 'callbacks' in kwargs: callbacks = kwargs.pop('callbacks')
 
             # training data at t==0.
             training_data_t0 = input[0]

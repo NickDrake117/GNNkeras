@@ -249,7 +249,7 @@ class CompositeGNNnodeBased(tf.keras.Model):
         # initialize states and iters for convergence loop,
         # including aggregated neighbors' label and aggregated incoming arcs' label.
         aggregated_nodes = [tf.sparse.sparse_dense_matmul(a, nodes[:, :d], adjoint_a=True) for a, d in zip(composite_adjacencies, dim_node_label)]
-        aggregated_arcs = tf.sparse.sparse_dense_matmul(arcnode, arcs[:, 2:], adjoint_a=True)
+        aggregated_arcs = tf.sparse.sparse_dense_matmul(arcnode, arcs, adjoint_a=True)
         aggregated_component = tf.concat(aggregated_nodes + [aggregated_arcs], axis=1)
 
         # new values for Loop.
@@ -265,7 +265,7 @@ class CompositeGNNnodeBased(tf.keras.Model):
 
         # out_st is the converged state for the filtered nodes, depending on g.set_mask.
         mask = tf.logical_and(set_mask, output_mask)
-        input_to_net_output = self.apply_filters(state, nodes, adjacency, arcs[:, 2:], mask)
+        input_to_net_output = self.apply_filters(state, nodes, adjacency, arcs, mask)
 
         # compute the output of the gnn network.
         out = self.net_output(input_to_net_output, training=training)
@@ -312,16 +312,16 @@ class CompositeGNNarcBased(CompositeGNNnodeBased):
     name = "arc"
 
     ## LOOP METHODS ###################################################################################################
-    def apply_filters(self, state_converged, nodes, adjacency, arcs_label, mask) -> tf.Tensor:
+    def apply_filters(self, state_converged, nodes, adjacency, arcs, mask) -> tf.Tensor:
         """ Takes only nodes' [states] or [states|labels] for those with output_mask==1 AND belonging to set. """
 
         # gather source nodes' and destination nodes' state.
         states = tf.gather(state_converged, adjacency.indices)
-        states = tf.reshape(states, shape=(arcs_label.shape[0], 2 * state_converged.shape[1]))
+        states = tf.reshape(states, shape=(arcs.shape[0], 2 * state_converged.shape[1]))
         states = tf.cast(states, tf.keras.backend.floatx())
 
         # concatenate source and destination states (and labels) to arc labels.
-        arc_state = tf.concat([states, arcs_label], axis=1)
+        arc_state = tf.concat([states, arcs], axis=1)
 
         # takes only arcs states for those with output_mask==1 AND belonging to the set (in case Dataset == 1 Graph).
         return tf.boolean_mask(arc_state, mask)

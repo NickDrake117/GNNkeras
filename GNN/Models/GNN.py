@@ -81,8 +81,8 @@ class GNNnodeBased(tf.keras.Model):
     def __repr__(self):
         """ Representation string for the instance of GNN. """
         return f"GNN(type={self.name}, state_dim={self.state_vect_dim}, " \
-               f"threshold={self.state_threshold}, max_iter={self.max_iteration}), " \
-               f"avg={self.average_st_grads}"
+               f"threshold={self.state_threshold}, max_iter={self.max_iteration}, " \
+               f"avg={self.average_st_grads})"
 
     # -----------------------------------------------------------------------------------------------------------------
     def __str__(self):
@@ -154,11 +154,11 @@ class GNNnodeBased(tf.keras.Model):
         :raise: ValueError – In case of invalid arguments for `optimizer`, `loss` or `metrics`. """
 
         # force eager execution, since graph-mode must be implemented.
-        kwargs['run_eagerly'] = True
+        _ = kwargs.pop("run_eagerly", None)
 
-        super().compile(*args, **kwargs)
-        self.net_state.compile(*args, **kwargs)
-        self.net_output.compile(*args, **kwargs)
+        super().compile(*args, **kwargs, run_eagerly=True)
+        self.net_state.compile(*args, **kwargs, run_eagerly=False)
+        self.net_output.compile(*args, **kwargs, run_eagerly=False)
         self.average_st_grads = average_st_grads
 
     ## CALL METHODs ###################################################################################################
@@ -236,7 +236,7 @@ class GNNnodeBased(tf.keras.Model):
         return k + 1, state_new, state, nodes, adjacency, aggregated_nodes, aggregated_arcs, training
 
     # -----------------------------------------------------------------------------------------------------------------
-    def apply_filters(self, state_converged, nodes, adjacency, arcs_label, mask) -> tf.Tensor:
+    def apply_filters(self, state_converged, nodes, adjacency, arcs, mask) -> tf.Tensor:
         """ Takes only nodes' [states] or [states|labels] for those with output_mask==1 AND belonging to set. """
         if self.state_vect_dim: state_converged = tf.concat([state_converged, nodes], axis=1)
         return tf.boolean_mask(state_converged, mask)
@@ -251,7 +251,7 @@ class GNNnodeBased(tf.keras.Model):
 
         # initialize states and iters for convergence loop,
         # including aggregated neighbors' label and aggregated incoming arcs' label.
-        aggregated_arcs = tf.sparse.sparse_dense_matmul(arcnode, arcs[:, 2:], adjoint_a=True)
+        aggregated_arcs = tf.sparse.sparse_dense_matmul(arcnode, arcs, adjoint_a=True)
         aggregated_nodes = tf.zeros(shape=(nodes.shape[0], 0), dtype=dtype)
         if self.state_vect_dim > 0:
             state = tf.random.normal((nodes.shape[0], self.state_vect_dim), stddev=0.1, dtype=dtype)
@@ -267,7 +267,7 @@ class GNNnodeBased(tf.keras.Model):
 
         # out_st is the converged state for the filtered nodes, depending on g.set_mask.
         mask = tf.logical_and(set_mask, output_mask)
-        input_to_net_output = self.apply_filters(state, nodes, adjacency, arcs[:, 2:], mask)
+        input_to_net_output = self.apply_filters(state, nodes, adjacency, arcs, mask)
 
         # compute the output of the gnn network.
         out = self.net_output(input_to_net_output, training=training)
@@ -314,17 +314,17 @@ class GNNarcBased(GNNnodeBased):
     name = "arc"
 
     ## LOOP METHODS ###################################################################################################
-    def apply_filters(self, state_converged, nodes,  adjacency, arcs_label, mask) -> tf.Tensor:
+    def apply_filters(self, state_converged, nodes,  adjacency, arcs, mask) -> tf.Tensor:
         """ Takes only nodes' [states] or [states|labels] for those with output_mask==1 AND belonging to set. """
         if self.state_vect_dim: state_converged = tf.concat([state_converged, nodes], axis=1)
 
         # gather source nodes' and destination nodes' state.
         states = tf.gather(state_converged, adjacency.indices)
-        states = tf.reshape(states, shape=(arcs_label.shape[0], 2 * state_converged.shape[1]))
+        states = tf.reshape(states, shape=(arcs.shape[0], 2 * state_converged.shape[1]))
         states = tf.cast(states, tf.keras.backend.floatx())
 
         # concatenate source and destination states (and labels) to arc labels.
-        arc_state = tf.concat([states, arcs_label], axis=1)
+        arc_state = tf.concat([states, arcs], axis=1)
 
         # takes only arcs states for those with output_mask==1 AND belonging to the set (in case Dataset == 1 Graph).
         return tf.boolean_mask(arc_state, mask)
