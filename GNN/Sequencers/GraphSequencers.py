@@ -106,7 +106,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
         g, set_mask = self.get_batch(index)
 
         newaxis = lambda x: x[..., tf.newaxis]
-        out = [g.nodes, g.arcs] + [newaxis(i) for i in [g.DIM_NODE_LABEL, g.set_mask, g.output_mask]] + \
+        out = [g.nodes, g.arcs] + [newaxis(i) for i in [g.DIM_NODE_LABEL, set_mask, g.output_mask]] + \
               [(i.indices, newaxis(i.values), tf.constant(i.shape, dtype=tf.int64)) for i in [g.Adjacency, g.ArcNode, g.NodeGraph]]
 
         if self.focus == 'g': mask = tf.ones((g.targets.shape[0]), dtype=bool)

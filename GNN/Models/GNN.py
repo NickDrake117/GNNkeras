@@ -154,11 +154,11 @@ class GNNnodeBased(tf.keras.Model):
         :raise: ValueError – In case of invalid arguments for `optimizer`, `loss` or `metrics`. """
 
         # force eager execution, since graph-mode must be implemented.
-        _ = kwargs.pop("run_eagerly", None)
+        run_eagerly = kwargs.pop("run_eagerly", False)
 
         super().compile(*args, **kwargs, run_eagerly=True)
-        self.net_state.compile(*args, **kwargs, run_eagerly=False)
-        self.net_output.compile(*args, **kwargs, run_eagerly=False)
+        self.net_state.compile(*args, **kwargs, run_eagerly=run_eagerly)
+        self.net_output.compile(*args, **kwargs, run_eagerly=run_eagerly)
         self.average_st_grads = average_st_grads
 
     ## CALL METHODs ###################################################################################################

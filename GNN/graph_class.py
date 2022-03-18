@@ -156,12 +156,28 @@ class GraphObject:
 
     # -----------------------------------------------------------------------------------------------------------------
     def __copy__(self):
-        """ deep copy method """
+        """ Copy inline method """
         return self.copy()
 
     # -----------------------------------------------------------------------------------------------------------------
     def __deepcopy__(self):
+        """ Deep copy inline method """
         return self.copy()
+
+    # -----------------------------------------------------------------------------------------------------------------
+    def __eq__(self, g):
+        """ Equality inline methods. Check equality between graphs, in lines like g1 == g2. """
+        # check representation strings, as they are immediate to obtain and summarize graphs in the same way
+        if str(self) != str(g): return False
+
+        # if strings are the same, then check for all the quantities
+        # Note that Adjacency and ArcNode are not checked,
+        # since they are calculated from arcs indices and aggregation_mode
+        self_data, g_data = self.get_dict_data(), g.get_dict_data()
+        for key in self_data:
+            if not np.array_equal(self_data[key], g_data[key]): return False
+
+        return True
 
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):

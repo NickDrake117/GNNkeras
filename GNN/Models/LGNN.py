@@ -144,10 +144,10 @@ class LGNN(tf.keras.Model):
         :raise: ValueError – In case of invalid arguments for `optimizer`, `loss` or `metrics`. """
 
         # force eager execution, since graph-mode must be implemented.
-        _ = kwargs.pop("run_eagerly", None)
+        run_eagerly = kwargs.pop("run_eagerly", False)
 
         super().compile(*args, **kwargs, run_eagerly=True)
-        for gnn in self.gnns: gnn.compile(*args, average_st_grads=average_st_grads, **kwargs, run_eagerly=False)
+        for gnn in self.gnns: gnn.compile(*args, average_st_grads=average_st_grads, **kwargs, run_eagerly=run_eagerly)
         self.training_mode = training_mode
         self.average_st_grads = average_st_grads
 

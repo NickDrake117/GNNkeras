@@ -29,14 +29,14 @@ def MLP(input_dim: tuple[int], layers: list[int], activations, kernel_initialize
     :return: Keras Sequential (MLP) model. """
 
     # build lists.
-    if type(activations) != list: activations = [activations for _ in layers]
-    if type(kernel_initializer) != list: kernel_initializer = [kernel_initializer for _ in layers]
-    if type(bias_initializer) != list: bias_initializer = [bias_initializer for _ in layers]
-    if type(kernel_regularizer) != list: kernel_regularizer = [kernel_regularizer for _ in layers]
-    if type(bias_regularizer) != list: bias_regularizer = [bias_regularizer for _ in layers]
-    if type(dropout_pos) == int:  dropout_pos = [dropout_pos]
-    if type(dropout_rate) == float: dropout_rate = [dropout_rate for _ in dropout_pos]
-    if dropout_rate == None or dropout_pos == None: dropout_rate, dropout_pos = list(), list()
+    if not isinstance(activations, list): activations = [activations for _ in layers]
+    if not isinstance(kernel_initializer, list): kernel_initializer = [kernel_initializer for _ in layers]
+    if not isinstance(bias_initializer, list): bias_initializer = [bias_initializer for _ in layers]
+    if not isinstance(kernel_regularizer, list): kernel_regularizer = [kernel_regularizer for _ in layers]
+    if not isinstance(bias_regularizer, list): bias_regularizer = [bias_regularizer for _ in layers]
+    if isinstance(dropout_pos, int):  dropout_pos = [dropout_pos]
+    if isinstance(dropout_rate, (int, float)): dropout_rate = [dropout_rate for _ in dropout_pos]
+    if dropout_rate is None or dropout_pos is None: dropout_rate, dropout_pos = list(), list()
 
     # check lengths.
     if len(set(map(len, [activations, kernel_initializer, bias_initializer, kernel_regularizer, bias_regularizer, layers]))) > 1:
@@ -74,7 +74,6 @@ def MLP(input_dim: tuple[int], layers: list[int], activations, kernel_initialize
 
     # return MLP model.
     mlp_layers = [layer(**params) for layer, params in zip(keras_layers, params_layers)]
-
     return Sequential(mlp_layers, name=name)
 
 
