@@ -141,18 +141,24 @@ To perform models training and testing, run:
 ### Implementation
 To cite the GNN/LGNN implementations please use the following publication:
 
-    Pancino, N., Rossi, A., Ciano, G., Giacomini, G., Bonechi, S., Andreini, P., Scarselli, F., Bianchini, M., Bongini, P. (2020),
-    "Graph Neural Networks for the Prediction of Protein–Protein Interfaces",
-    In ESANN 2020 proceedings (pp.127-132).
+    Niccolò Pancino, Pietro Bongini, Franco Scarselli, Monica Bianchini,
+    GNNkeras: A Keras-based library for Graph Neural Networks and homogeneous and heterogeneous graph processing,
+    SoftwareX, Volume 18, 2022, 101061, ISSN 2352-7110, https://doi.org/10.1016/j.softx.2022.101061.
     
 Bibtex:
 
-    @inproceedings{Pancino2020PPI,
-      title={Graph Neural Networks for the Prediction of Protein–Protein Interfaces},
-      author={Niccolò Pancino, Alberto Rossi, Giorgio Ciano, Giorgia Giacomini, Simone Bonechi, Paolo Andreini, Franco Scarselli, Monica Bianchini, Pietro Bongini},
-      booktitle={28th European Symposium on Artificial Neural Networks, Computational Intelligence and Machine Learning (online event)},
-      pages={127-132},
-      year={2020}
+    @article{PANCINO2022101061,
+    title = {GNNkeras: A Keras-based library for Graph Neural Networks and homogeneous and heterogeneous graph processing},
+    journal = {SoftwareX},
+    volume = {18},
+    pages = {101061},
+    year = {2022},
+    issn = {2352-7110},
+    doi = {https://doi.org/10.1016/j.softx.2022.101061},
+    url = {https://www.sciencedirect.com/science/article/pii/S2352711022000486},
+    author = {Niccolò Pancino and Pietro Bongini and Franco Scarselli and Monica Bianchini},
+    keywords = {Graphs, Machine Learning, TensorFlow, Keras, Graph Neural Networks},
+    abstract = {In several areas of science and engineering, data can be naturally represented in graph form, where nodes denote entities and edges stand for relationships between them. Graph Neural Networks (GNNs) are a well-known class of machine learning models for graph processing. In this paper, we present GNNkeras, a library, based on Keras, which allows the implementation of a large subclass of GNNs. GNNkeras is a flexible tool: the implemented models can be used to classify/cluster nodes, edges, or whole graphs. Moreover, GNNkeras can be applied to both homogeneous and heterogeneous graphs, exploiting both inductive and mixed inductive–transductive learning, and can implement a layered version of GNNs, namely the LGNN model.}
     }
 
 
