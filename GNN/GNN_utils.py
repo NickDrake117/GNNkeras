@@ -1,10 +1,9 @@
+import os.path
 from typing import Union, Optional
 
 import numpy as np
 
-from GNN.Sequencers.GraphSequencers import MultiGraphSequencer, SingleGraphSequencer, CompositeMultiGraphSequencer, CompositeSingleGraphSequencer
 from GNN.graph_class import GraphObject
-
 
 # ---------------------------------------------------------------------------------------------------------------------
 def simple_graph(focus: str, aggregation_mode: str = 'average') -> GraphObject:
@@ -85,7 +84,7 @@ def prepare_LKO_data(dataset: Union[GraphObject, list[GraphObject], list[list[Gr
     elif isinstance(dataset, list):
         # check type if dataset is a list
         if all(isinstance(i, GraphObject) for i in dataset): dataset = [dataset]
-        assert number_of_batches < min([len(i) for i in dataset]), \
+        assert number_of_batches <= min([len(i) for i in dataset]), \
             "number of batches must be smaller than len(dataset) or than the number of graphs in the smaller class."
         assert all(isinstance(i, list) for i in dataset) and all(isinstance(i, GraphObject) for i in flatten(dataset))
 
@@ -119,3 +118,80 @@ def prepare_LKO_data(dataset: Union[GraphObject, list[GraphObject], list[list[Gr
 
     output_dict['dataset'] = flatten(dataset)
     return output_dict
+
+# ---------------------------------------------------------------------------------------------------------------------
+def LKO(model, lko_dict: dict, focus: str, aggregation_mode: str, sequencer, sequencer_kwargs, epochs: int, scalers_dict: dict, LGNN_case: bool,
+        compile_kwargs: dict, save_model: bool = True, verbose=2, output_folder='LKO'):
+    from tensorflow.keras import callbacks
+    from pandas import DataFrame
+
+    if output_folder[-1] != '/': output_folder += '/'
+    if os.path.exists(output_folder) and len(os.listdir(output_folder))>1:
+        raise ValueError(':param output_folder: already exists. Please change LKO output location folder and re-run.')
+
+    dataset = lko_dict.pop('dataset')
+    res = list()
+    for idx, elems in enumerate(zip(*lko_dict.values())):
+        print(f"\n\nBATCH No. {idx + 1}/{len(lko_dict['training'])}")
+
+        ### get current test/training/validation sets and normalize data if needed 
+        gtr, gva, gte = [[dataset[i].copy() for i in j] for j in elems]
+        if scalers_dict is not None:
+            G = GraphObject.merge(gtr, focus, aggregation_mode)
+            scalers = G.normalize(scalers_dict, True)
+            for g in gtr + gva + gte: g.normalize_from(scalers=scalers)
+
+        _ = sequencer_kwargs.pop('shuffle', False)
+        training_sequencer = sequencer(gtr, **sequencer_kwargs, shuffle=False)
+        validation_sequencer = sequencer(gva, **sequencer_kwargs, shuffle=False)
+        test_sequencer = sequencer(gte, **sequencer_kwargs, shuffle=False)
+
+        ### defines callbacks
+        if LGNN_case:
+            # callbacks for lgnn
+            path = f"{output_folder}LGNN{idx}/"
+            tb = [callbacks.TensorBoard(log_dir=f'{path}gnn{i}/', histogram_freq=1) for i in range(model.LAYERS)]
+            es = [callbacks.EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=20, restore_best_weights=True) for i in range(model.LAYERS)]
+
+            if model.training_mode != 'serial': tb, es = [tb[0]], [es[0]]
+
+        else:
+            # callbacks for gnn
+            path = f"{output_folder}GNN{idx}/"
+            tb = [callbacks.TensorBoard(log_dir=f'{path}', histogram_freq=1)]
+            es = [callbacks.EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=20)]
+
+        # final callbacks
+        cb = list(zip(tb, es))
+
+        ### re-initialize model + training model with training batches data
+        model_tmp = model.copy()
+        model_tmp.compile(loss=model.compiled_loss._losses, metrics=model.compiled_metrics._metrics, **compile_kwargs)
+        model_tmp.fit(training_sequencer, epochs=epochs, validation_data=validation_sequencer, callbacks=cb, verbose=verbose)
+
+        # save model for batch
+        if save_model: model.save(f'{path}model')
+
+        ### test model on current test batch
+        model_prediction = model.predict(test_sequencer, verbose=verbose)
+        targets = test_sequencer.targets #np.concatenate([g.targets for g in test_sequencer.data], axis=0)
+
+        # res dataframe
+        res_model_tmp = DataFrame(np.vstack([targets.flatten(), model_prediction.flatten()]).transpose(), columns=['Targs', 'Out'])
+        res.append(model_tmp.evaluate(test_sequencer, return_dict=True, verbose=verbose))
+
+        # add columns of (real, not normalized before) targets and de-normalized output
+        if scalers_dict is not None and 'targets' in scalers_dict:
+            targets = np.concatenate([dataset[k].targets[g.output_mask].copy() for k,g in zip(elems[-1], test_sequencer._data)], axis=0)
+            res_model_tmp = DataFrame(
+                np.concatenate([res_model_tmp.values,
+                                np.vstack([targets.flatten(),
+                                           scalers['targets'].inverse_transform(model_prediction).flatten()]).transpose()], axis=1),
+                columns=['Targs', 'Out', 'Real Targs', 'Real Out'])
+
+        ### print batch results
+        print('\n\n')
+        res_model_tmp.to_csv(f"{path}test_res.csv", index=False)
+        print(DataFrame.from_dict(res[:idx + 1]))
+
+    return DataFrame.from_dict(res)

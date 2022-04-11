@@ -1,6 +1,7 @@
 # codinf=utf-8
 from typing import Union
 
+from numpy import savez, load
 import tensorflow as tf
 from GNN.Models.GNN import GNNnodeBased, GNNarcBased, GNNgraphBased
 
@@ -28,18 +29,15 @@ class LGNN(tf.keras.Model):
         super().__init__()
 
         ### LGNN parameter.
-        self.GNN_CLASS = type(gnns[0])
         self.gnns = gnns
-        self.LAYERS = len(gnns)
-        self.get_state = bool(get_state)
-        self.get_output = bool(get_output)
+        self._get_state = bool(get_state)
+        self._get_output = bool(get_output)
 
         # net_state weights policy: (bool),
         # if True weights are averaged srt the number of iterations, otherwise they're summed.
-        self.average_st_grads = None
-
+        self._average_st_grads = None
         # training mode, to be compiled: 'serial', 'parallel', 'residual'.
-        self.training_mode = None
+        self._training_mode = None
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self, copy_weights: bool = True):
@@ -54,6 +52,38 @@ class LGNN(tf.keras.Model):
 
         return self.from_config(config)
 
+    @property
+    def get_state(self):
+        return self._get_state
+
+    @property
+    def get_output(self):
+        return self._get_output
+
+    @property
+    def training_mode(self):
+        return self._training_mode
+
+    @property
+    def average_st_grads(self):
+        return self._average_st_grads
+
+    @property
+    def LAYERS(self):
+        return len(self.gnns)
+
+    @property
+    def GNN_CLASS(self):
+        return type(self.gnns[0])
+
+    @property
+    def processing_function(self):
+        # get processing function to retrieve state and output for the nodes of the graphs processed by the gnn layer.
+        # Fundamental for graph-focused problem, since the output is referred to the entire graph, rather than to the graph nodes.
+        # Since in CONSTRUCTOR GNNs type must be only one, type(self.gnns[0]) is exploited
+        # and processing function is the same overall GNNs layers.
+        return GNNnodeBased.Loop if self.GNN_CLASS._name == "graph" else self.GNN_CLASS.Loop
+
     ## CONFIG METHODs #################################################################################################
     def get_config(self):
         """ Get configuration dictionary. To be used with from_config().
@@ -62,7 +92,7 @@ class LGNN(tf.keras.Model):
 
     # -----------------------------------------------------------------------------------------------------------------
     @classmethod
-    def from_config(cls, config, **kwargs):
+    def from_config(cls, config):
         """ Create class from configuration dictionary. To be used with get_config().
         It is good practice providing this method to user. """
         return cls(**config)
@@ -70,7 +100,8 @@ class LGNN(tf.keras.Model):
     ## REPR METHODs ###################################################################################################
     def __repr__(self):
         """ Representation string for the instance of LGNN. """
-        return f"LGNN(type={self.__gnnClass__(self.GNN_CLASS)}, layers={self.LAYERS}, " \
+        #return f"LGNN(type={self.__gnnClass__(self.GNN_CLASS)}, layers={self.LAYERS}, " \
+        return f"LGNN(type={self.GNN_CLASS._name}, layers={self.LAYERS}, " \
                f"get_state={self.get_state}, get_output={self.get_output}, " \
                f"mode={self.training_mode}, avg={self.average_st_grads})"
 
@@ -92,12 +123,13 @@ class LGNN(tf.keras.Model):
 
         # get configuration dictionary.
         config = self.get_config()
-        config["gnn_class"] = self.__gnnClass__(self.GNN_CLASS)
+        config["gnn_class"] = {'node': 0, 'arc': 1, 'graph': 2}[self.GNN_CLASS._name]
 
         # save GNNs.
         for i, gnn in enumerate(config.pop("gnns")): gnn.save(f'{path}GNN{i}/', **kwargs)
 
         # save configuration file in json format.
+        savez(f"{path}config.npz", **config)
         from json import dump
         with open(f'{path}config.json', 'w') as json_file:
             dump(config, json_file)
@@ -120,11 +152,10 @@ class LGNN(tf.keras.Model):
         if path[-1] != '/': path += '/'
 
         # load configuration file.
-        with open(f'{path}config.json', 'r') as read_file:
-            config = loads(read_file.read())
+        config = dict(load(f"{path}config.npz"))
 
         # load GNNs.
-        gnn_class = cls.__gnnClassLoader__(config.pop('gnn_class'))
+        gnn_class = {0: GNNnodeBased, 1: GNNarcBased, 2: GNNgraphBased}[int(config.pop('gnn_class'))]
         gnns = [gnn_class.load(f'{path}{i}') for i in listdir(path) if isdir(f'{path}{i}')]
 
         return cls(gnns=gnns, **config)
@@ -148,11 +179,11 @@ class LGNN(tf.keras.Model):
 
         super().compile(*args, **kwargs, run_eagerly=True)
         for gnn in self.gnns: gnn.compile(*args, average_st_grads=average_st_grads, **kwargs, run_eagerly=run_eagerly)
-        self.training_mode = training_mode
-        self.average_st_grads = average_st_grads
+        self._training_mode = training_mode
+        self._average_st_grads = average_st_grads
 
     ## CALL METHODs ###################################################################################################
-    def call(self, inputs, training: bool = False, mask=None):
+    def call(self, inputs, training: bool = False, mask=None, **kwargs):
         """ Call method, get the output of the model for an input graph. Return only output if testing mode.
 
         :param inputs: (tuple) coming from a GraphSequencer.__getitem__ method, since GNN cannot digest graph as they are.
@@ -164,15 +195,15 @@ class LGNN(tf.keras.Model):
         inputs = self.process_inputs(inputs)
         k, state, out = self.Loop(*inputs, training=training)
         if training: return k, state, out
-        return out[-1]
+        return out[kwargs.get('idx', -1)]
 
     ## STATIC METHODs #################################################################################################
     process_inputs = staticmethod(GNNnodeBased.process_inputs)
-    __gnnClass__ = staticmethod(lambda x: {GNNnodeBased:"node", GNNarcBased: "arc", GNNgraphBased: "graph"}[x])
+    #__gnnClass__ = staticmethod(lambda x: {GNNnodeBased:"node", GNNarcBased: "arc", GNNgraphBased: "graph"}[x])
     __gnnClassLoader__ = staticmethod(lambda x: {"node": GNNnodeBased, "arc": GNNarcBased, "graph": GNNgraphBased}[x])
 
     ## LOOP METHODS ###################################################################################################
-    def update_graph(self, nodes, arcs, dim_node_label, set_mask, output_mask, state, output) -> tuple:
+    def update_graph(self, nodes, arcs, dim_node_features, set_mask, output_mask, state, output) -> tuple:
         """ Update nodes and arcs tensor based on get_state and get_output attributes.
         All quantities refer to a single graph, while state and output to GNN state and output calculations.
 
@@ -209,20 +240,15 @@ class LGNN(tf.keras.Model):
         # update nodes and arcs labels + node label dim.
         nodes = tf.concat([nodeplus, nodes], axis=1)
         arcs = tf.concat([arcplus, arcs], axis=1)
-        dim_node_label = dim_node_label + nodeplus.shape[1]
-
-        return nodes, arcs, dim_node_label
+        dim_node_features = dim_node_features + nodeplus.shape[1]
+        
+        return nodes, arcs, dim_node_features
 
     # -----------------------------------------------------------------------------------------------------------------
-    def Loop(self, nodes, arcs, dim_node_label, set_mask, output_mask, adjacency, arcnode, nodegraph,
+    def Loop(self, nodes, arcs, dim_node_features, set_mask, output_mask, adjacency, arcnode, nodegraph,
              training: bool = False) -> tuple[list[tf.Tensor], tf.Tensor, list[tf.Tensor]]:
         """ Process a single GraphTensor element, returning 3 lists of iterations, states and outputs. """
         constant_inputs = [set_mask, output_mask, adjacency, arcnode, nodegraph]
-
-        # get processing function to retrieve state and output for the nodes of the graphs processed by the gnn layer.
-        # Fundamental for graph-focused problem, since the output is referred to the entire graph, rather than to the graph nodes.
-        # Since in CONSTRUCTOR GNNs type must be only one, type(self.gnns[0]) is exploited and processing function is the same overall GNNs layers.
-        processing_function = self.__gnnClassLoader__("arc").Loop if self.gnns[0].name == "arc" else self.__gnnClassLoader__("node").Loop
 
         # deep copy of nodes and arcs at time t==0.
         dtype = tf.keras.backend.floatx()
@@ -232,7 +258,7 @@ class LGNN(tf.keras.Model):
         K, states, outs = list(), list(), list()
         for idx, gnn in enumerate(self.gnns[:-1]):
             # process graph.
-            k, state, out = processing_function(gnn, nodes, arcs, dim_node_label, *constant_inputs, training=training)
+            k, state, out = self.processing_function(gnn, nodes, arcs, dim_node_features, *constant_inputs, training=training)
 
             # append new k, new states and new gnn output.
             K.append(k)
@@ -240,10 +266,10 @@ class LGNN(tf.keras.Model):
             outs.append(tf.sparse.sparse_dense_matmul(nodegraph, out, adjoint_a=True) if isinstance(gnn, GNNgraphBased) else out)
 
             # update graph with nodes' state and  nodes/arcs' output of the current GNN layer, to feed next GNN layer.
-            nodes, arcs, dim_node_label = self.update_graph(nodes_0, arcs_0, dim_node_label, set_mask, output_mask, state, out)
+            nodes, arcs, dim_node_features = self.update_graph(nodes_0, arcs_0, dim_node_features, set_mask, output_mask, state, out)
 
         # final GNN k, state and out values.
-        k, state, out = self.gnns[-1].Loop(nodes, arcs, dim_node_label, *constant_inputs, training=training)
+        k, state, out = self.gnns[-1].Loop(nodes, arcs, dim_node_features, *constant_inputs, training=training)
 
         # return 3 lists of Ks, states and gnn outputs, s.t. len == self.LAYERS.
         return K + [k], states + [state], outs + [out]
@@ -291,24 +317,18 @@ class LGNN(tf.keras.Model):
         """ Fit method. Re-defined so as to consider the 'serial' learning mode of the LGNN model. """
         if self.training_mode == 'serial':
             ### in serial mode, :param callbacks: must be a list of list/tuple of callbacksObject, s.t. len(callbacks) == self.LAYERS
-
-            # get processing function to retrieve state and output for the nodes of the graphs processed by the gnn layer.
-            # Fundamental for graph-focused problem, since the output is referred to the entire graph, rather than to the graph nodes.
-            # Since in CONSTRUCTOR GNNs type must be only one, type(self.gnns[0]) is exploited and processing function is the same overall GNNs layers
-            processing_function = self.__gnnClassLoader__("arc").Loop if self.gnns[0].name == "arc" else self.__gnnClassLoader__("node").Loop
-
             # callbacks option.
             callbacks = [list() for _ in range(self.LAYERS)]
             if 'callbacks' in kwargs: callbacks = kwargs.pop('callbacks')
 
             # training data at t==0.
-            training_data_t0 = input[0]
-            training_sequence = training_data_t0.copy()
+            training_sequencer_t0 = input[0]
+            training_sequencer = training_sequencer_t0.copy()
 
             # validation data at t==0, if provided.
-            validation_data_t0 = kwargs.pop('validation_data', None)
-            valid_sequence = None
-            if validation_data_t0 is not None: valid_sequence = validation_data_t0.copy()
+            validation_sequencer_t0 = kwargs.pop('validation_data', None)
+            validation_sequencer = None
+            if validation_sequencer_t0 is not None: validation_sequencer = validation_sequencer_t0.copy()
 
             ### LEARNING PROCEDURE - each gnn layer is trained separately, one after another.
             # for loop only for len(self.gnns)-1, as last layer can be directly trained,
@@ -317,44 +337,46 @@ class LGNN(tf.keras.Model):
                 print(f'\n\n --- GNN {idx + 1}/{self.LAYERS} ---')
 
                 ### TRAINING GNN single layer.
-                gnn.fit(training_sequence.copy(), *input[1:], **kwargs, callbacks=callbacks[idx],
-                        validation_data=valid_sequence.copy() if valid_sequence is not None else None)
+                gnn.fit(training_sequencer, *input[1:], **kwargs, callbacks=callbacks[idx], validation_data=validation_sequencer)
 
                 ### PROCESSING TRAINING DATA.
                 # set batch size == 1 to retrieve single graph nodes, arcs, state and outputs, for graph update process between layers.
                 # shuffle is set to False so that valid_sequence is not shuffled after retrieving sTr and oTr.
-                training_sequence.shuffle = False
-                training_sequence.set_batch_size(1)
+                training_sequencer.shuffle = False
+                training_sequencer.batch_size = 1
 
                 # retrieve iteration, state and output of nodes/arcs for each graph.
-                _, sTr, oTr = zip(*[processing_function(gnn, *gnn.process_inputs(i[0]), training=True) for i in training_sequence])
+                _, sTr, oTr = zip(*[self.processing_function(gnn, *gnn.process_inputs(inp), training=True)
+                                    for inp, *_ in training_sequencer])
 
                 # update nodes and arcs attributes for each single graph.
-                training_sequence = training_data_t0.copy()
-                for g, s, o in zip(training_sequence.data, sTr, oTr):
-                    n, a, l = self.update_graph(g.nodes, g.arcs, g.DIM_NODE_LABEL, g.set_mask, g.output_mask, s, o)
-                    g.nodes, g.arcs, g.DIM_NODE_LABEL = n.numpy(), a.numpy(), l
+                training_sequencer = training_sequencer_t0.copy()
+                for g, G, s, o in zip(training_sequencer.data, training_sequencer._data, sTr, oTr):
+                    n, a, l = self.update_graph(g.nodes, g.arcs, g.DIM_NODE_FEATURES, G.set_mask, G.output_mask, s, o)
+                    g.nodes, g.arcs, g._DIM_NODE_FEATURES = n.numpy(), a.numpy(), l
+                training_sequencer.build_batches()
 
                 ### PROCESSING VALIDATION DATA if provided, same procedure as the one processing training data.
-                if valid_sequence is not None:
+                if validation_sequencer is not None:
                     # set batch size == 1 to retrieve single graph nodes, arcs, state and outputs, for graph update process between layers.
                     # shuffle is sst to False so that valid_sequence is not shuffled after retrieving sVa and oVa.
-                    valid_sequence.shuffle = False
-                    valid_sequence.set_batch_size(1)
+                    validation_sequencer.shuffle = False
+                    validation_sequencer.batch_size = 1
 
                     # retrieve iteration, state and output of nodes/arcs for each graph.
-                    _, sVa, oVa = zip(*[processing_function(gnn, *gnn.process_inputs(i[0]), training=True) for i in valid_sequence])
+                    _, sVa, oVa = zip(*[self.processing_function(gnn, *gnn.process_inputs(inp), training=True)
+                                        for inp, *_ in validation_sequencer])
 
                     # update nodes and arcs attributes for each single graph.
-                    valid_sequence = validation_data_t0.copy()
-                    for g, s, o in zip(valid_sequence.data, sVa, oVa):
-                        n, a, l = self.update_graph(g.nodes, g.arcs, g.DIM_NODE_LABEL, g.set_mask, g.output_mask, s, o)
-                        g.nodes, g.arcs, g.DIM_NODE_LABEL = n.numpy(), a.numpy(), l
+                    validation_sequencer = validation_sequencer_t0.copy()
+                    for g, G, s, o in zip(validation_sequencer.data, validation_sequencer._data, sVa, oVa):
+                        n, a, l = self.update_graph(g.nodes, g.arcs, g.DIM_NODE_FEATURES, G.set_mask, G.output_mask, s, o)
+                        g.nodes, g.arcs, g._DIM_NODE_FEATURES = n.numpy(), a.numpy(), l
+                    validation_sequencer.build_batches()
 
             ### TRAINING GNN single LAST layer (so that all nodes/arcs labels update procedure is not carried out).
             print(f'\n\n --- GNN {self.LAYERS}/{self.LAYERS} ---')
-            self.gnns[-1].fit(training_sequence.copy(), *input[1:], **kwargs, callbacks=callbacks[-1],
-                    validation_data=valid_sequence.copy() if valid_sequence is not None else None)
+            self.gnns[-1].fit(training_sequencer, *input[1:], **kwargs, callbacks=callbacks[-1], validation_data=validation_sequencer)
         else:
             # fit LGNN keras.Model as usual.
             super().fit(*input, **kwargs)

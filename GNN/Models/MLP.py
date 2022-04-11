@@ -78,13 +78,13 @@ def MLP(input_dim: tuple[int], layers: list[int], activations, kernel_initialize
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_target: int, focus: str, dim_state: int,
-                   hidden_units: Optional[Union[int, list[int]]] = None,
+def get_inout_dims(net_name: str, dim_node_features: int, dim_arc_label: int, dim_target: int, focus: str, dim_state: int,
+                   hidden_units: Optional[Union[int, list[int]]] = None, force_composite = False,
                    *, layer: int = 0, get_state: bool = False, get_output: bool = False) ->  tuple[list[tuple[int,]],  list[int]]:
     """ Calculate input and output dimension for the MLP of state and output networks.
 
     :param net_name: (str) in ['state', 'output'].
-    :param dim_node_label: (int) dimension of node label.
+    :param dim_node_features: (int) dimension of node label.
     :param dim_arc_label: (int) dimension of arc label.
     :param dim_target: (int) dimension of target.
     :param focus: (str) s.t. len(focus) in [1,2] -> [{'a','n','g'} | {'1','2'}].
@@ -101,7 +101,7 @@ def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_t
     assert dim_state >= 0
     assert isinstance(hidden_units, (int, type(None))) or (isinstance(hidden_units, list) and all(isinstance(x, int) for x in hidden_units))
 
-    NL, AL, T = array(dim_node_label, ndmin=1), dim_arc_label, dim_target
+    NL, AL, T = array(dim_node_features, ndmin=1), dim_arc_label, dim_target
     DS, GS, GO = dim_state, get_state, get_output
 
     # if LGNN, get MLPs layers for gnn in layer 2+
@@ -121,7 +121,7 @@ def get_inout_dims(net_name: str, dim_node_label: int, dim_arc_label: int, dim_t
 
     # MLP output
     elif net_name == 'output':
-        if len(NL)>1: NL = array([0])
+        if len(NL)>1 or (len(NL)==1 and force_composite): NL = array([0])
         input_shape =  list((focus == 'a') * (NL + AL + DS) + NL + DS)
         output_shape = T
 

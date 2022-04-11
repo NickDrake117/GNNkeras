@@ -31,19 +31,20 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
         :param batch_size: (int) batch size for merging graphs data.
         :param shuffle: (bool) if True, at the end of the epoch, data is shuffled. No shuffling is performed otherwise. """
         self.data = graphs if isinstance(graphs, list) else [graphs]
+        self.indices = np.arange(len(self.data))
         self.focus = focus
         self.aggregation_mode = aggregation_mode
-        self.batch_size = int(batch_size)
-        self.shuffle = shuffle
+        self._shuffle = shuffle
         self.dtype = tf.keras.backend.floatx()
-        self.build_batches()
+        self.batch_size = int(batch_size)
 
     # -----------------------------------------------------------------------------------------------------------------
     def build_batches(self):
         """ Create batches from sequencer data. """
-        graphs = [self.merge(self.data[i * self.batch_size: (i + 1) * self.batch_size], focus=self.focus,
-                             aggregation_mode=self.aggregation_mode) for i in range(len(self))]
-        self.graph_tensors = [self.to_graph_tensor(g) for g in graphs]
+        graphs = np.array(self._data)
+        graphs = [self.merge(graphs[self.indices[i * self.batch_size: (i + 1) * self.batch_size]], focus=self.focus,
+                             aggregation_mode=self.aggregation_mode, dtype=self.dtype) for i in range(len(self))]
+        self.batches = [self.to_graph_tensor(g) for g in graphs]
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
@@ -51,8 +52,21 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
 
         :return: a Deep Copy of the GraphSequencer instance. """
         config = self.get_config()
+        shuffle = config.pop("shuffle")
+        config["shuffle"] = False
         config["graphs"] = [g.copy() for g in config["graphs"]]
-        return self.from_config(config)
+
+        sequencer = self.from_config(config)
+        sequencer.shuffle = shuffle
+        return sequencer
+
+    # -----------------------------------------------------------------------------------------------------------------
+    def __copy__(self):
+        return self.copy()
+
+    # -----------------------------------------------------------------------------------------------------------------
+    def __deepcopy__(self):
+        return self.copy()
 
     ## CONFIG METHODs #################################################################################################
     def get_config(self):
@@ -66,7 +80,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
 
     # -----------------------------------------------------------------------------------------------------------------
     @classmethod
-    def from_config(cls, config, **kwargs):
+    def from_config(cls, config):
         """ Create class from configuration dictionary. To be used with get_config().
         It is good practice providing this method to user. """
         return cls(**config)
@@ -75,8 +89,8 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
     def __repr__(self):
         """ Representation string for the instance of GraphSequencer. """
         problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.focus]
-        return f"graph_sequencer(type=multiple {problem}-focused, len={len(self)}, " \
-               f"aggregation='{self.aggregation_mode}', batch_size={self.batch_size}, shuffle={self.shuffle})"
+        return f"graph_sequencer(type=multiple {problem}-focused, batch_size={self.batch_size}, len={len(self)}, " \
+               f"aggregation='{self.aggregation_mode}', shuffle={self.shuffle})"
 
     # -----------------------------------------------------------------------------------------------------------------
     def __str__(self):
@@ -84,15 +98,52 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
         return self.__repr__()
 
     ## SETTER and GETTER METHODs ######################################################################################
-    def set_batch_size(self, new_batch_size):
+    @property
+    def targets(self):
+        return np.concatenate([g.targets if self.focus=='g' else [g.set_mask[g.output_mask]] for g in self.batches], axis=0)
+
+    @property
+    def aggregation_mode(self):
+        return self._aggregation_mode
+
+    @property
+    def batch_size(self):
         """ Modify batch size, then re-create batches. """
-        self.batch_size = new_batch_size
+        return self._batch_size
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
+    def shuffle(self):
+        return self._shuffle
+
+    @shuffle.setter
+    def shuffle(self, shuffle : bool):
+        if self._shuffle and not shuffle: self.indices.sort()
+        self._shuffle = shuffle
+
+
+    @aggregation_mode.setter
+    def aggregation_mode(self, aggregation_mode):
+        for g in self.data: g.aggregation_mode = aggregation_mode
+        self._aggregation_mode = aggregation_mode
+
+    @batch_size.setter
+    def batch_size(self, batch_size):
+        """ Modify batch size, then re-create batches. """
+        self._batch_size = batch_size
         self.build_batches()
+
+    @data.setter
+    def data(self, data):
+        self._data = data
 
     # -----------------------------------------------------------------------------------------------------------------
     def get_batch(self, index):
         """ Return the single graph_tensor corresponding to the considered batch and its mask. """
-        g = self.graph_tensors[index]
+        g = self.batches[index]
         return g, g.set_mask
 
     ## IMPLEMENTED ABSTRACT METHODs ###################################################################################
@@ -106,7 +157,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
         g, set_mask = self.get_batch(index)
 
         newaxis = lambda x: x[..., tf.newaxis]
-        out = [g.nodes, g.arcs] + [newaxis(i) for i in [g.DIM_NODE_LABEL, set_mask, g.output_mask]] + \
+        out = [g.nodes, g.arcs] + [newaxis(i) for i in [g.DIM_NODE_FEATURES, set_mask, g.output_mask]] + \
               [(i.indices, newaxis(i.values), tf.constant(i.shape, dtype=tf.int64)) for i in [g.Adjacency, g.ArcNode, g.NodeGraph]]
 
         if self.focus == 'g': mask = tf.ones((g.targets.shape[0]), dtype=bool)
@@ -123,7 +174,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
     def on_epoch_end(self):
         """ Update data after each epoch. Rebuild batches if data is shuffled. """
         if self.shuffle:
-            np.random.shuffle(self.data)
+            np.random.shuffle(self.indices)
             self.build_batches()
 
 
@@ -148,22 +199,21 @@ class SingleGraphSequencer(MultiGraphSequencer):
         :param focus: (str) 'a' arcs-focused, 'g' graph-focused, 'n' node-focused. See GraphObject.__init__ for details.
         :param batch_size: (int) batch size for set_mask_idx values.
         :param shuffle: (bool) if True, at the end of the epoch, set_mask_idx is shuffled. No shuffling is performed otherwise. """
-        self.data = graph
-        self.graph_tensor = self.to_graph_tensor(graph)
+        self.data = self.to_graph_tensor(graph)  # graph
+        self.indices = np.argwhere(self.data.set_mask).squeeze()
         self.focus = focus
         self.batch_size = batch_size
-        self.shuffle = shuffle
+        self._shuffle = shuffle
         self.dtype = tf.keras.backend.floatx()
-
-        self.set_mask_idx = np.argwhere(self.data.set_mask).squeeze()
         self.build_batches()
 
     # -----------------------------------------------------------------------------------------------------------------
     def build_batches(self):
         """ Create batches from sequencer data. """
-        self.batch_masks = np.zeros((len(self), len(self.data.set_mask)), dtype=bool)
+        self.batches = np.zeros((len(self), len(self.data.set_mask)), dtype=bool)
         for i in range(len(self)):
-            self.batch_masks[i, self.set_mask_idx[i * self.batch_size: (i + 1) * self.batch_size]] = True
+            self.batches[i, self.indices[i * self.batch_size: (i + 1) * self.batch_size]] = True
+        self.batches = tf.constant(self.batches, dtype=bool)
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self):
@@ -171,8 +221,13 @@ class SingleGraphSequencer(MultiGraphSequencer):
 
         :return: a Deep Copy of the GraphSequencer instance. """
         config = self.get_config()
-        config["graph"] = config["graph"].copy()
-        return self.from_config(config)
+        shuffle = config.pop("shuffle")
+        config["shuffle"] = False
+        config["graph"] = GraphObject.fromGraphTensor(config["graph"])
+
+        sequencer = self.from_config(config)
+        sequencer.shuffle = shuffle
+        return sequencer
 
     ## CONFIG METHODs #################################################################################################
     def get_config(self):
@@ -188,24 +243,18 @@ class SingleGraphSequencer(MultiGraphSequencer):
         """ Representation string for the instance of GraphSequencer. """
         problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.focus]
         return f"graph_sequencer(type=single {problem}-focused, " \
-               f"len={len(self)}, batch_size={self.batch_size}, shuffle={self.shuffle})"
+               f"batch_size={self.batch_size}, len={len(self)}, shuffle={self.shuffle})"
 
     ## SETTER and GETTER METHODs ######################################################################################
     def get_batch(self, index):
         """ Return the single graph_tensor and a mask for the considered batch. """
-        return self.graph_tensor, tf.constant(self.batch_masks[index], dtype=bool)
+        return self.data, self.batches[index]
 
     ## IMPLEMENTED ABSTRACT METHODs ###################################################################################
     def __len__(self):
         """ Denotes the number of batches per epoch. """
-        return int(np.ceil(np.sum(self.data.set_mask) / self.batch_size))
-
-    # -----------------------------------------------------------------------------------------------------------------
-    def on_epoch_end(self):
-        """ Update set_mask indices after each epoch. Rebuild batches if set_mask indices are shuffled. """
-        if self.shuffle:
-            np.random.shuffle(self.set_mask_idx)
-            self.build_batches()
+        #return int(np.ceil(np.sum(self.data.set_mask) / self.batch_size))
+        return int(np.ceil(len(self.indices) / self.batch_size))
 
 
 #######################################################################################################################
@@ -217,11 +266,6 @@ class CompositeMultiGraphSequencer(MultiGraphSequencer):
     # Specific function utilities.
     merge = classmethod(CompositeGraphObject.merge)
     to_graph_tensor = classmethod(CompositeGraphTensor.fromGraphObject)
-
-    ## CONSTRUCTORS METHODS ###########################################################################################
-    def __init__(self, graphs: list[CompositeGraphObject], *args, **kwargs):
-        """ COSNTRUCTOR - re-defined only to hint graphs. """
-        super().__init__(graphs, *args, **kwargs)
 
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):
@@ -254,11 +298,6 @@ class CompositeSingleGraphSequencer(SingleGraphSequencer, CompositeMultiGraphSeq
 
     # Specific function utilities.
     to_graph_tensor = classmethod(CompositeGraphTensor.fromGraphObject)
-
-    ## CONSTRUCTORS METHODS ###########################################################################################
-    def __init__(self, graph: CompositeGraphObject, *args, **kwargs):
-        """ Initialization - re-defined only to hint graph. """
-        SingleGraphSequencer.__init__(self, graph, *args, **kwargs)
 
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):

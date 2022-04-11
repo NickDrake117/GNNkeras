@@ -1,4 +1,5 @@
 # codinf=utf-8
+import numpy as np
 import tensorflow as tf
 
 
@@ -7,7 +8,7 @@ import tensorflow as tf
 #######################################################################################################################
 class CompositeGNNnodeBased(tf.keras.Model):
     """ Composite Graph Neural Network (CGNN) model for node-focused applications. """
-    name = "node"
+    _name = "node"
 
     ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
@@ -20,22 +21,27 @@ class CompositeGNNnodeBased(tf.keras.Model):
 
         :param net_state: (list of tf.keras.model.Sequential) 1 MLP for each node type for the state networks, initialized externally.
         :param net_output: (tf.keras.model.Sequential) MLP for the output network, initialized externally.
-        :param state_vect_dim: (int)>=0, dimension for state vectors in GNN where states_t0 != node labels.
-        :param max_iteration: (int) max number of iteration for the unfolding procedure to reach convergence.
-        :param state_threshold: (float) threshold for specifying if convergence is reached or not. """
-        assert state_vect_dim >= 0
-        assert max_iteration > 0
+        :param state_vect_dim: (int)>0, dimension for state vectors in GNN where states_t0 != node labels.
+        :param max_iteration: (int)>=0 max number of iteration for the unfolding procedure to reach convergence.
+        :param state_threshold: (float)>=0 threshold for specifying if convergence is reached or not. """
+        assert state_vect_dim > 0, "In the heterogeneous case, :param state_vect_dim: must be >0"
+        assert max_iteration >= 0
         assert state_threshold >= 0
 
         super().__init__(name=self.name)
 
-        # GNN parameters.
+        # GNN + net_state and net_output models
         self.net_state = net_state
         self.net_output = net_output
-        self.state_vect_dim = int(state_vect_dim)
-        self.max_iteration = int(max_iteration)
-        self.state_threshold = state_threshold
-        self.average_st_grads = None
+
+        # GNN parameters.
+        self._state_vect_dim = int(state_vect_dim)
+        self._max_iteration = int(max_iteration)
+        self._state_threshold = float(state_threshold)
+
+        # net_state weights policy: True or False.
+        # if True weights are averaged srt the number of iterations, otherwise they're summed
+        self._average_st_grads = None
 
     # -----------------------------------------------------------------------------------------------------------------
     def copy(self, copy_weights: bool = True):
@@ -57,6 +63,27 @@ class CompositeGNNnodeBased(tf.keras.Model):
         # return copy
         return self.from_config(config)
 
+    ## PROPERTY GETTERS ###############################################################################################
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def state_vect_dim(self):
+        return self._state_vect_dim
+
+    @property
+    def max_iteration(self):
+        return self._max_iteration
+
+    @property
+    def state_threshold(self):
+        return self._state_threshold
+
+    @property
+    def average_st_grads(self):
+        return self._average_st_grads
+
     ## CONFIG METHODs #################################################################################################
     def get_config(self):
         """ Get configuration dictionary. To be used with from_config().
@@ -69,14 +96,17 @@ class CompositeGNNnodeBased(tf.keras.Model):
 
     # -----------------------------------------------------------------------------------------------------------------
     @classmethod
-    def from_config(cls, config, **kwargs):
-
+    def from_config(cls, config):
+        """ Create class from configuration dictionary. To be used with get_config().
+        It is good practice providing this method to user. """
         return cls(**config)
 
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):
         """ Representation string for the instance of Composite GNN. """
-        return f"Composite{super().__repr__()}"
+        return f"CompositeGNN(type={self.name}, state_dim={self.state_vect_dim}, " \
+               f"threshold={self.state_threshold}, max_iter={self.max_iteration}, " \
+               f"avg={self.average_st_grads})"
 
     # -----------------------------------------------------------------------------------------------------------------
     def __str__(self):
@@ -103,9 +133,7 @@ class CompositeGNNnodeBased(tf.keras.Model):
         tf.keras.models.save_model(config.pop("net_output"), f'{path}net_output/', *args, **kwargs)
 
         # save configuration (without MLPs info) file in json format.
-        from json import dump
-        with open(f'{path}config.json', 'w') as json_file:
-            dump(config, json_file)
+        np.savez(f"{path}config.npz", **config)
 
     # -----------------------------------------------------------------------------------------------------------------
     @classmethod
@@ -119,17 +147,14 @@ class CompositeGNNnodeBased(tf.keras.Model):
         # check path
         if path[-1] != '/': path += '/'
 
-        # load configuration file
-        from json import loads
-        with open(f'{path}config.json', 'r') as read_file:
-            config = loads(read_file.read())
-
         # load net_state and net_output
         from os import listdir
         net_state_dirs = [f'{path}{i}/' for i in listdir(path) if 'net_state' in i]
         netS = [tf.keras.models.load_model(i, compile=False, *args, **kwargs)  for i in net_state_dirs]
         netO = tf.keras.models.load_model(f'{path}net_output/', compile=False, *args, **kwargs)
 
+        # load configuration file
+        config = np.load(f"{path}config.npz")
         return cls(net_state=netS, net_output=netO, **config)
 
     ## SUMMARY METHOD #################################################################################################
@@ -149,13 +174,13 @@ class CompositeGNNnodeBased(tf.keras.Model):
         :param kwargs: Arguments supported for backwards compatibility only. Inherited from Model.compile method. See source for details.
         :raise: ValueError – In case of invalid arguments for `optimizer`, `loss` or `metrics`. """
 
-        # force eager execution, since graph-mode must be implemented.
-        kwargs['run_eagerly'] = True
+        # force eager execution on super() model, since graph-mode must be implemented.
+        run_eagerly = kwargs.pop("run_eagerly", False)
 
-        super().compile(*args, **kwargs)
-        for net in self.net_state: net.compile(*args, **kwargs)
-        self.net_output.compile(*args, **kwargs)
-        self.average_st_grads = average_st_grads
+        super().compile(*args, **kwargs, run_eagerly=True)
+        for net in self.net_state: net.compile(*args, **kwargs, run_eagerly=run_eagerly)
+        self.net_output.compile(*args, **kwargs, run_eagerly=run_eagerly)
+        self._average_st_grads = average_st_grads
 
     ## CALL METHODs ###################################################################################################
     def call(self, inputs, training: bool = False, mask=None):
@@ -212,34 +237,30 @@ class CompositeGNNnodeBased(tf.keras.Model):
         return tf.logical_and(c1, c2)
 
     # -----------------------------------------------------------------------------------------------------------------
-    def convergence(self, k, state, state_old, nodes, dim_node_label, type_mask, adjacency, aggregated_component, training) -> tuple:
+    def convergence(self, k, state, state_old, nodes, dim_node_features, type_mask, adjacency, aggregated_component, training) -> tuple:
         """ Compute new state for the graph's nodes. """
 
         # aggregated_states is the aggregation of ONLY neighbors' states.
         aggregated_states = tf.sparse.sparse_dense_matmul(adjacency, state, adjoint_a=True)
 
         # concatenate the destination node 'old' states to the incoming message, to obtain the input to net_state.
-        state_new = list()
-        for d, m, net in zip(dim_node_label, type_mask, self.net_state):
+        state_new = tf.zeros_like(state)
+        for d, m, net in zip(dim_node_features, type_mask, self.net_state):
+            if not tf.reduce_any(m): continue
             inp_state_i = tf.concat([nodes[:, :d], state, aggregated_states, aggregated_component], axis=1)
             inp_state_i = tf.boolean_mask(inp_state_i, m)
-
             # compute new state and update step iteration counter.
-            state_new.append(net(inp_state_i, training=training))
+            state_new += tf.scatter_nd(tf.where(m), net(inp_state_i, training=training), state.shape)
 
-        # reorder state based on nodes' ordering.
-        state_new = [tf.scatter_nd(tf.where(m), s, (len(m), s.shape[1])) for m, s in zip(type_mask, state_new)]
-        state_new = tf.reduce_sum(state_new, axis=0)
-
-        return k + 1, state_new, state, nodes, dim_node_label, type_mask, adjacency, aggregated_component, training
+        return k + 1, state_new, state, nodes, dim_node_features, type_mask, adjacency, aggregated_component, training
 
     # -----------------------------------------------------------------------------------------------------------------
     def apply_filters(self, state_converged, nodes, adjacency, arcs_label, mask) -> tf.Tensor:
-        """ Takes only nodes' [states] or [states|labels] for those with output_mask==1 AND belonging to set. """
+        """ Takes only nodes' states for those with output_mask==1 AND belonging to set. """
         return tf.boolean_mask(state_converged, mask)
 
     # -----------------------------------------------------------------------------------------------------------------
-    def Loop(self, nodes, arcs, dim_node_label, type_mask, set_mask, output_mask, composite_adjacencies, adjacency,
+    def Loop(self, nodes, arcs, dim_node_features, type_mask, set_mask, output_mask, composite_adjacencies, adjacency,
             arcnode, nodegraph, training: bool = False) -> tuple[int, tf.Tensor, tf.Tensor]:
         """ Process a single GraphObject/GraphTensor element g, returning iteration, states and output. """
 
@@ -248,20 +269,20 @@ class CompositeGNNnodeBased(tf.keras.Model):
 
         # initialize states and iters for convergence loop,
         # including aggregated neighbors' label and aggregated incoming arcs' label.
-        aggregated_nodes = [tf.sparse.sparse_dense_matmul(a, nodes[:, :d], adjoint_a=True) for a, d in zip(composite_adjacencies, dim_node_label)]
+        aggregated_nodes = [tf.sparse.sparse_dense_matmul(a, nodes[:, :d], adjoint_a=True) for a, d in zip(composite_adjacencies, dim_node_features)]
         aggregated_arcs = tf.sparse.sparse_dense_matmul(arcnode, arcs, adjoint_a=True)
         aggregated_component = tf.concat(aggregated_nodes + [aggregated_arcs], axis=1)
 
         # new values for Loop.
         k = tf.constant(0, dtype=dtype)
-        if self.state_vect_dim > 0: state = tf.random.normal((nodes.shape[0], self.state_vect_dim), stddev=0.1, dtype=dtype)
-        else: state = tf.constant(nodes, dtype=dtype)
+        state = tf.random.normal((nodes.shape[0], self.state_vect_dim), stddev=0.1, dtype=dtype)
         state_old = tf.ones_like(state, dtype=dtype)
         training = tf.constant(training, dtype=bool)
 
         # loop until convergence is reached.
         k, state, state_old, *_ = tf.while_loop(self.condition, self.convergence,
-                                                [k, state, state_old, nodes, dim_node_label, type_mask, adjacency, aggregated_component, training])
+                                                [k, state, state_old, nodes, dim_node_features, type_mask, adjacency,
+                                                 aggregated_component, training])
 
         # out_st is the converged state for the filtered nodes, depending on g.set_mask.
         mask = tf.logical_and(set_mask, output_mask)
@@ -309,7 +330,7 @@ class CompositeGNNnodeBased(tf.keras.Model):
 #######################################################################################################################
 class CompositeGNNarcBased(CompositeGNNnodeBased):
     """ Composite Graph Neural Network (CGNN) model for arc-focused applications. """
-    name = "arc"
+    _name = "arc"
 
     ## LOOP METHODS ###################################################################################################
     def apply_filters(self, state_converged, nodes, adjacency, arcs, mask) -> tf.Tensor:
@@ -332,12 +353,12 @@ class CompositeGNNarcBased(CompositeGNNnodeBased):
 #######################################################################################################################
 class CompositeGNNgraphBased(CompositeGNNnodeBased):
     """ Composite Graph Neural Network (CGNN) model for graph-focused applications. """
-    name = "graph"
+    _name = "graph"
 
     ## LOOP METHODS ###################################################################################################
-    def Loop(self, *args, training: bool = False) -> tuple[int, tf.Tensor, tf.Tensor]:
+    def Loop(self, *args, **kwargs) -> tuple[int, tf.Tensor, tf.Tensor]:
         """ Process a single graph, returning iteration, states and output.
         Output of graph-focused problem is the averaged nodes output. """
-        k, state_nodes, out_nodes = super().Loop(*args, training=training)
+        k, state_nodes, out_nodes = super().Loop(*args, **kwargs)
         out_gnn = tf.sparse.sparse_dense_matmul(args[-1], out_nodes, adjoint_a=True)
-        return k, state_nodes, out_gnn
+        return k, state_nodes, self.net_output.layers[-1].activation(out_gnn)
