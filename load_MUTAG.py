@@ -55,5 +55,6 @@ graphs = [GraphObject(arcs=e, nodes=n, targets=t[np.newaxis, ...], focus='g')
 
 # HETEROGENEOUS GRAPHS
 composite_graphs = [CompositeGraphObject(arcs=g.arcs, nodes=g.nodes, targets=g.targets, focus='g',
-                                         type_mask=np.ones((g.nodes.shape[0], 1), dtype=bool), dim_node_label=(g.nodes.shape[1],))
+                                         type_mask=np.ones((g.nodes.shape[0], 1), dtype=bool),
+                                         dim_node_features=(g.nodes.shape[1],))
                     for g in graphs]
