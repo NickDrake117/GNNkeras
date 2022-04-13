@@ -13,6 +13,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
     """ GraphSequencer for dataset composed of multiple Homogeneous Graphs. """
 
     # Specific function utilities
+    _name = "multiple"
     merge = classmethod(GraphObject.merge)
     to_graph_tensor = classmethod(GraphTensor.fromGraphObject)
 
@@ -89,7 +90,7 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
     def __repr__(self):
         """ Representation string for the instance of GraphSequencer. """
         problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.focus]
-        return f"graph_sequencer(type=multiple {problem}-focused, batch_size={self.batch_size}, len={len(self)}, " \
+        return f"graph_sequencer(type={self._name} {problem}-focused, batch_size={self.batch_size}, len={len(self)}, " \
                f"aggregation='{self.aggregation_mode}', shuffle={self.shuffle})"
 
     # -----------------------------------------------------------------------------------------------------------------
@@ -123,7 +124,6 @@ class MultiGraphSequencer(tf.keras.utils.Sequence):
     def shuffle(self, shuffle : bool):
         if self._shuffle and not shuffle: self.indices.sort()
         self._shuffle = shuffle
-
 
     @aggregation_mode.setter
     def aggregation_mode(self, aggregation_mode):
@@ -185,12 +185,14 @@ class SingleGraphSequencer(MultiGraphSequencer):
     """ GraphSequencer for dataset composed of only one single Homogeneous Graph. """
 
     # Specific function utilities.
+    _name = "single"
     to_graph_tensor = classmethod(GraphTensor.fromGraphObject)
 
     ## CONSTRUCTORS METHODS ###########################################################################################
     def __init__(self,
                  graph: GraphObject,
                  focus: str,
+                 aggregation_mode: str,
                  batch_size: int = 32,
                  shuffle: bool = True):
         """ CONSTRUCTOR
@@ -199,18 +201,26 @@ class SingleGraphSequencer(MultiGraphSequencer):
         :param focus: (str) 'a' arcs-focused, 'g' graph-focused, 'n' node-focused. See GraphObject.__init__ for details.
         :param batch_size: (int) batch size for set_mask_idx values.
         :param shuffle: (bool) if True, at the end of the epoch, set_mask_idx is shuffled. No shuffling is performed otherwise. """
-        self.data = self.to_graph_tensor(graph)  # graph
+        graph.aggregation_mode = aggregation_mode
+        #graph = self.to_graph_tensor(graph) #aggiunta ora
+        self.indices = np.argwhere(graph.set_mask).squeeze()
+        self._length_mask = len(graph.set_mask)
+
+        '''self.data = self.to_graph_tensor(graph)  # graph
         self.indices = np.argwhere(self.data.set_mask).squeeze()
         self.focus = focus
         self.batch_size = batch_size
         self._shuffle = shuffle
         self.dtype = tf.keras.backend.floatx()
-        self.build_batches()
+        self.build_batches()'''
+
+        super().__init__(graph, focus, aggregation_mode, batch_size, shuffle)
+        self.data = self.to_graph_tensor(graph)  # graph
 
     # -----------------------------------------------------------------------------------------------------------------
     def build_batches(self):
         """ Create batches from sequencer data. """
-        self.batches = np.zeros((len(self), len(self.data.set_mask)), dtype=bool)
+        self.batches = np.zeros((len(self), self.length_mask), dtype=bool)
         for i in range(len(self)):
             self.batches[i, self.indices[i * self.batch_size: (i + 1) * self.batch_size]] = True
         self.batches = tf.constant(self.batches, dtype=bool)
@@ -223,27 +233,16 @@ class SingleGraphSequencer(MultiGraphSequencer):
         config = self.get_config()
         shuffle = config.pop("shuffle")
         config["shuffle"] = False
-        config["graph"] = GraphObject.fromGraphTensor(config["graph"])
+        config["graph"] = GraphObject.fromGraphTensor(config["graph"], config["focus"])
 
         sequencer = self.from_config(config)
         sequencer.shuffle = shuffle
         return sequencer
 
-    ## CONFIG METHODs #################################################################################################
-    def get_config(self):
-        """ Get configuration dictionary. To be used with from_config().
-        It is good practice providing this method to user. """
-        return {"graph": self.data,
-                "focus": self.focus,
-                "batch_size": self.batch_size,
-                "shuffle": self.shuffle}
-
-    ## REPRESENTATION METHODs #########################################################################################
-    def __repr__(self):
-        """ Representation string for the instance of GraphSequencer. """
-        problem = {'a': 'edge', 'n': 'node', 'g': 'graph'}[self.focus]
-        return f"graph_sequencer(type=single {problem}-focused, " \
-               f"batch_size={self.batch_size}, len={len(self)}, shuffle={self.shuffle})"
+    # -----------------------------------------------------------------------------------------------------------------
+    @property
+    def length_mask(self):
+        return self._length_mask
 
     ## SETTER and GETTER METHODs ######################################################################################
     def get_batch(self, index):
@@ -302,4 +301,4 @@ class CompositeSingleGraphSequencer(SingleGraphSequencer, CompositeMultiGraphSeq
     ## REPRESENTATION METHODs #########################################################################################
     def __repr__(self):
         """ Representation string for the instance of CompositeGraphSequencer. """
-        return f"composite_{super().__repr__()}"
+        return f"composite_{SingleGraphSequencer.__repr__(self)}"

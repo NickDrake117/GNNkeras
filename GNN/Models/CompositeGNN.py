@@ -260,6 +260,10 @@ class CompositeGNNnodeBased(tf.keras.Model):
         return tf.boolean_mask(state_converged, mask)
 
     # -----------------------------------------------------------------------------------------------------------------
+    def use_net_output(self, x, nodegraph, training : bool = False):
+        return self.net_output(x, training=training)
+
+    # -----------------------------------------------------------------------------------------------------------------
     def Loop(self, nodes, arcs, dim_node_features, type_mask, set_mask, output_mask, composite_adjacencies, adjacency,
             arcnode, nodegraph, training: bool = False) -> tuple[int, tf.Tensor, tf.Tensor]:
         """ Process a single GraphObject/GraphTensor element g, returning iteration, states and output. """
@@ -289,8 +293,10 @@ class CompositeGNNnodeBased(tf.keras.Model):
         input_to_net_output = self.apply_filters(state, nodes, adjacency, arcs, mask)
 
         # compute the output of the gnn network.
-        out = self.net_output(input_to_net_output, training=training)
+        #out = self.net_output(input_to_net_output, training=training)
+        out = self.use_net_output(input_to_net_output, nodegraph, training=training)
         return k, state, out
+
 
     ## TRAIN METHODS ##################################################################################################
     def train_step(self, data):
@@ -355,10 +361,15 @@ class CompositeGNNgraphBased(CompositeGNNnodeBased):
     """ Composite Graph Neural Network (CGNN) model for graph-focused applications. """
     _name = "graph"
 
+    # -----------------------------------------------------------------------------------------------------------------
+    def use_net_output(self, x, nodegraph, training : bool = False):
+        for l in self.net_output.layers[:-1]: x = l(x, training=training)
+        return self.net_output.layers[-1](tf.sparse.sparse_dense_matmul(nodegraph, x, adjoint_a=True), training=training)
+
     ## LOOP METHODS ###################################################################################################
-    def Loop(self, *args, **kwargs) -> tuple[int, tf.Tensor, tf.Tensor]:
+    '''def Loop(self, *args, **kwargs) -> tuple[int, tf.Tensor, tf.Tensor]:
         """ Process a single graph, returning iteration, states and output.
         Output of graph-focused problem is the averaged nodes output. """
         k, state_nodes, out_nodes = super().Loop(*args, **kwargs)
         out_gnn = tf.sparse.sparse_dense_matmul(args[-1], out_nodes, adjoint_a=True)
-        return k, state_nodes, self.net_output.layers[-1].activation(out_gnn)
+        return k, state_nodes, self.net_output.layers[-1].activation(out_gnn)'''
