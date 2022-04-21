@@ -55,6 +55,10 @@ class CompositeGraphObject(GraphObject):
         # ADJ[k][i,j]=value if and only if an edge (i,j) exists AND node_type(i) == k.
         self.CompositeAdjacencies = self.buildCompositeAdjacency()
 
+        if self.type_mask.shape[0] != len(self.DIM_NODE_FEATURES):
+            raise ValueError(f"number of types of nodes ({len(self.DIM_NODE_FEATURES)}) is not coherent "
+                             f"with the expected number of type masks ({self.type_mask.shape[0]}).")
+
     # -----------------------------------------------------------------------------------------------------------------
     def buildAdjacency(self, indices):
         """ Build ArcNode Matrix A of shape (number_of_arcs, number_of_nodes) where A[i,j]=value if arc[i,2]==node[j].

@@ -194,6 +194,11 @@ class CompositeGNNnodeBased(tf.keras.Model):
         :return: only output of the model if training == False, or a tuple of 3 elements describing, respectively:
         the iteration number reached at the end of Loop method at time T, the nodes state at time T and the output of the model. """
         inputs = self.process_inputs(inputs)
+
+        # check for the input graph if number of types and net state networks match.
+        if len(inputs[2]) != len(self.net_state):
+            raise IndexError("number of different types of node and number of net_state networks mismatch.")
+
         k, state, out = self.Loop(*inputs, training=training)
         if training: return k, state, out
         else: return out

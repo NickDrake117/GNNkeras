@@ -63,7 +63,8 @@ class GraphObject:
         self.output_mask = np.ones(lenMask[focus], dtype=bool) if output_mask is None else output_mask.astype(bool)
 
         # check lengths: output_mask must be as long as set_mask, if passed as parameter to constructor.
-        if len(self.set_mask) != len(self.output_mask): raise ValueError('Error - len(<set_mask>) != len(<output_mask>)')
+        if len(self.set_mask) != len(self.output_mask):
+            raise ValueError('len(:param set_mask:) and len(:param output_mask:) must match.')
 
         # set nodes and arcs aggregation.
         self.checkAggregation(aggregation_mode)
@@ -79,6 +80,10 @@ class GraphObject:
 
         # build node_graph conversion matrix, to transform a node-focused output into a graph-focused one.
         self.NodeGraph = self.buildNodeGraph(focus) if NodeGraph is None else coo_matrix(NodeGraph, dtype=self._dtype)
+
+        if (focus=='g' and len(self.targets) != self.NodeGraph.shape[1]) or (focus!='g' and len(self.targets) != np.sum(self.output_mask)):
+            raise ValueError(f"number of targets ({len(self.targets)}) is not coherent with the expected number of targets "
+                             f"({(focus=='g')*self.NodeGraph.shape[1] + (focus!='g'*np.sum(self.output_mask))}).")
 
     # -----------------------------------------------------------------------------------------------------------------
     def buildAdjacency(self, indices):
