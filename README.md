@@ -138,6 +138,27 @@ To perform models training and testing, run:
 ***NOTE** uncomment lgnn lines to train and test lgnn model in parallel mode. Set 'training_mode' argument to change learning behaviour*
 
 ## Citing
+### GNNkeras Library
+To cite this work please use the following publication:
+
+    Pancino, N., Bongini, P., Scarselli, F., & Bianchini, M. (2022).
+    "GNNkeras: A Keras-based library for Graph Neural Networks and homogeneous and heterogeneous graph processing", 
+    SoftwareX, 18, 101061.
+    
+Bibtex:
+
+    @article{PANCINO2022101061,
+        title = {GNNkeras: A Keras-based library for Graph Neural Networks and homogeneous and heterogeneous graph processing},
+        author = {Niccolò Pancino and Pietro Bongini and Franco Scarselli and Monica Bianchini},
+        journal = {SoftwareX},
+        volume = {18},
+        pages = {101061},
+        year = {2022},
+        issn = {2352-7110},
+        doi = {https://doi.org/10.1016/j.softx.2022.101061},
+        url = {https://www.sciencedirect.com/science/article/pii/S2352711022000486}}
+
+        
 ### GNN original paper
 To cite GNN please use the following publication:
 
